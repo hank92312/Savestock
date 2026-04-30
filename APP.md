@@ -14,8 +14,8 @@
 * **前端 (Frontend / UI)**：Flutter (Dart語言)。負責處理跨平台的高流暢度動畫、財經圖表繪製與使用者互動。
 * **後端 API (Backend)**：Python (FastAPI 或 Flask)。提供 RESTful API 供 Flutter 呼叫。
 * **資料抓取與運算 (ETL)**：Python (Pandas + Requests)。負責每日定時抓取台股盤後資料、清理資料並執行殖利率與防護警示邏輯的運算。
-* **資料庫 (Database)**：關聯式資料庫 (PostgreSQL 或 SQL Server)。透過 SQL 語法進行會員授權與股票清單的結構化管理。
-* **快取 (Cache)**：Redis (儲存 10 檔預設股票的計算結果，降低資料庫 I/O)。
+* **資料庫 (Database)**：SQLite (開發與測試階段) / PostgreSQL (生產環境)。透過 SQL 語法進行會員授權與股票清單的結構化管理。
+* **快取 (Cache)**：Redis (選配，目前暫以 SQLite 效能為準)。
 * **通知系統 (Notifications)**：Firebase Cloud Messaging (FCM) 負責跨平台 App 推播，SendGrid/AWS SES 負責郵件通知。
 
 ## 3. 功能模組 (Functional Modules)
@@ -45,15 +45,26 @@
 
 ## 4. 資料庫 Schema 概覽 (Database Schema)
 
+* **目前實作狀態**：已建立 SQLite 實體資料庫 `savestock.db`。
 * **Users**：`User_ID`, `Email`, `OAuth_Provider`, `UUID` (訪客用)。
 * **User_Licenses**：`User_ID`, `Tier_ID`, `Purchase_Date` (處理買斷授權紀錄)。
-* **Plan_Configs**：`Tier_ID`, `Tier_Name`, `Max_Total_Stocks` (方案設定表，不寫死於程式碼，便於未來擴充)。
-* **Stock_Master**：`Stock_ID`, `Name`, `Sector` (產業類別), `Avg_Dividend_2Y`, `Default_Drop_Threshold`。
-* **User_Stocks**：`User_ID`, `Stock_ID`, `Status (Active/Hidden)`, `Is_Default`, `Custom_Drop_Threshold` (使用者自訂防護數值)。
-* **Daily_Prices**：`Stock_ID`, `Date`, `Close_Price`, `Volume`, `Alert_Flag`。
-* **User_Preferences**：`User_ID`, `Push_Enabled`, `Email_Enabled` (預設為 False，尊重使用者隱私)。
+* **Plan_Configs**：`Tier_ID`, `Tier_Name`, `Max_Total_Stocks` (方案設定表)。
+* **Stock_Master**：`Stock_ID`, `Name`, `Sector`, `Avg_Dividend_2Y`, `Last_Updated`。
+* **User_Stocks**：`User_ID`, `Stock_ID`, `Status`, `Is_Default`。
+* **Daily_Prices**：`Stock_ID`, `Date`, `Close_Price`, `Volume`, `Alert_Flag`, `Alert_Reason`。
 
-## 5. 系統流程圖 (System Flow)
+## 5. 功能開發進度與修正紀錄 (Development Progress)
+
+### 已完成 (Done)
+- [x] **資料庫架構**：完成 SQLite 相容 Schema 轉換與實體初始化。
+- [x] **ETL 邏輯修復**：修正 `yfinance` 欄位缺失與時區問題，成功抓取 10 檔預設股票資料。
+- [x] **環境設定**：建立 `.env` 檔案與資料庫連線字串。
+
+### 進行中 (WIP)
+- [ ] **API 實作**：FastAPI 基礎框架已建立，待實作數據讀取端點。
+
+## 6. 系統流程圖 (System Flow)
+
 
 1.  **ETL 流程 (後端批次)**：每日台股收盤後執行 Python Pandas 腳本 -> 抓取證交所資料 -> 計算 2 年平均報酬率 -> 判定異常警示 -> 寫入資料庫/Redis。
 2.  **通知流程 (非同步)**：判定完成後 -> 檢查 `User_Preferences` -> 透過 Message Queue 背景發送 FCM 推播或 Email。
