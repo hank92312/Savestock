@@ -1,5 +1,4 @@
 import os
-import pandas as pd
 import yfinance as yf
 from sqlalchemy import create_engine, text
 from dotenv import load_dotenv
@@ -14,7 +13,35 @@ DEFAULT_DB = "sqlite:///c:/Savestock/savestock.db"
 DB_URL = os.getenv("DATABASE_URL", DEFAULT_DB)
 engine = create_engine(DB_URL)
 
-def fetch_stock_data(stock_id: str):
+# 依產業別設定單日跌幅警示閾值（小數格式，例如 0.025 = 2.5%）
+SECTOR_THRESHOLDS = {
+    "ETF":           0.04,
+    "Finance":       0.025,
+    "Telecom":       0.025,
+    "Construction":  0.06,
+    "Food":          0.03,
+    "Semiconductor": 0.05,
+}
+
+# 預設追蹤的 14 檔股票，含名稱與產業別（由系統固定，不依賴 yfinance sector 欄位）
+TARGET_STOCKS = [
+    {"id": "0056.TW",  "name": "元大高股息",      "sector": "ETF"},
+    {"id": "00878.TW", "name": "國泰永續高股息",   "sector": "ETF"},
+    {"id": "00919.TW", "name": "群益台灣精選高息", "sector": "ETF"},
+    {"id": "00929.TW", "name": "復華台灣科技優息", "sector": "ETF"},
+    {"id": "00900.TW", "name": "富邦特選高股息30", "sector": "ETF"},
+    {"id": "2892.TW",  "name": "第一金",           "sector": "Finance"},
+    {"id": "2838.TW",  "name": "聯邦銀",           "sector": "Finance"},
+    {"id": "2887.TW",  "name": "台新金",           "sector": "Finance"},
+    {"id": "2542.TW",  "name": "興富發",           "sector": "Construction"},
+    {"id": "5522.TW",  "name": "遠雄",             "sector": "Construction"},
+    {"id": "2412.TW",  "name": "中華電信",         "sector": "Telecom"},
+    {"id": "3045.TW",  "name": "台灣大哥大",       "sector": "Telecom"},
+    {"id": "1216.TW",  "name": "統一企業",         "sector": "Food"},
+    {"id": "1210.TW",  "name": "大成長城",         "sector": "Food"},
+]
+
+def fetch_stock_data(stock_id: str, name: str, sector: str):
     """
     抓取指定股票的歷史資料與綜合股利資訊 (包含現金與配股)
     """
@@ -61,17 +88,21 @@ def fetch_stock_data(stock_id: str):
     avg_volume_20d = hist['Volume'].tail(20).mean()
     volume_ratio = latest_day['Volume'] / avg_volume_20d if avg_volume_20d > 0 else 1
     
-    # 警示判定
+    # 依產業別套用跌幅警示閾值
+    drop_threshold = SECTOR_THRESHOLDS.get(sector, 0.04) * 100
     alert_flag = False
     alert_reason = []
-    if price_change <= -2.5: alert_reason.append(f"跌幅:{price_change:.2f}%")
-    if volume_ratio >= 2.5: alert_reason.append(f"爆量:{volume_ratio:.2f}倍")
-    if alert_reason: alert_flag = True
+    if price_change <= -drop_threshold:
+        alert_reason.append(f"跌幅:{price_change:.2f}%")
+    if volume_ratio >= 2.5:
+        alert_reason.append(f"爆量:{volume_ratio:.2f}倍")
+    if alert_reason:
+        alert_flag = True
 
     return {
         "stock_id": stock_id,
-        "name": ticker.info.get('shortName', stock_id),
-        "sector": ticker.info.get('sector', 'Unknown'),
+        "name": name,
+        "sector": sector,
         "date": latest_day.name.date(),
         "close": latest_day['Close'],
         "volume": latest_day['Volume'],
@@ -123,27 +154,13 @@ def save_to_db(data):
     print(f"資料庫更新成功: {data['stock_id']}")
 
 def main():
-    # 根據 Default Stock List.md 定義的 10 檔預設目標
-    target_stocks = [
-        "0056.TW",  # 元大高股息
-        "00878.TW", # 國泰永續高股息
-        "00919.TW", # 群益台灣精選高息
-        "00929.TW", # 復華台灣科技優息
-        "00900.TW", # 富邦特選高股息30
-        "2892.TW",  # 第一金
-        "2838.TW",  # 聯邦銀
-        "2887.TW",  # 台新金
-        "2542.TW",  # 興富發
-        "5522.TW"   # 遠雄
-    ]
-    
-    for sid in target_stocks:
-        data = fetch_stock_data(sid)
+    for stock in TARGET_STOCKS:
+        data = fetch_stock_data(stock["id"], stock["name"], stock["sector"])
         if data:
             try:
                 save_to_db(data)
             except Exception as e:
-                print(f"寫入資料庫失敗 {sid}: {e}")
+                print(f"寫入資料庫失敗 {stock['id']}: {e}")
 
 if __name__ == "__main__":
     main()

@@ -13,6 +13,10 @@ build/
 .packages
 .pub-cache/
 .pub/
+frontend/android/
+frontend/ios/
+frontend/.flutter-plugins
+frontend/.flutter-plugins-dependencies
 
 # IDEs
 .vscode/
