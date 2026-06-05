@@ -420,7 +420,7 @@ class _EmptyView extends StatelessWidget {
             ),
             const SizedBox(height: 10),
             const Text(
-              '輸入代號或中文名稱（部分亦可）\n系統會即時列出匹配股票供你選擇\n\n例如：\n「005」→ 0050、0051、0056…\n「台積」→ 台積電(2330)\n「中光」→ 中光電(5371，上櫃)',
+              '輸入代號或中文名稱（部分亦可）\n系統會即時列出匹配股票供你選擇\n\n例如：\n「005」→ 0050、0051、0056…\n「台積」→ 台積電(2330)\n「金融」→ 國泰金、富邦金…',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 14,
