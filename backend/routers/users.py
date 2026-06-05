@@ -3,6 +3,7 @@ from sqlalchemy import text
 from pydantic import BaseModel
 from typing import Optional
 from database import get_db
+from routers.stocks import _fetch_and_upsert
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -145,3 +146,30 @@ def remove_from_watchlist(user_id: int, stock_id: str, conn=Depends(get_db)):
     if result.rowcount == 0:
         raise HTTPException(status_code=404, detail="Stock not in watchlist")
     return {"message": "Stock removed from watchlist"}
+
+
+@router.post("/{user_id}/watchlist/refresh")
+def refresh_watchlist(user_id: int, conn=Depends(get_db)):
+    """重新從 yfinance 抓取用戶自選股的最新價格與股利，回傳更新後清單。"""
+    if not conn.execute(
+        text("SELECT 1 FROM Users WHERE User_ID = :uid"), {"uid": user_id}
+    ).fetchone():
+        raise HTTPException(status_code=404, detail="User not found")
+
+    rows = conn.execute(text("""
+        SELECT us.Stock_ID
+        FROM User_Stocks us
+        WHERE us.User_ID = :uid AND us.Status = 'Active'
+    """), {"uid": user_id}).fetchall()
+
+    results = []
+    errors = []
+    for r in rows:
+        try:
+            data = _fetch_and_upsert(r.Stock_ID, conn)
+            if data:
+                results.append(data)
+        except Exception as e:
+            errors.append({"stock_id": r.Stock_ID, "error": str(e)})
+
+    return {"updated": len(results), "errors": errors, "stocks": results}

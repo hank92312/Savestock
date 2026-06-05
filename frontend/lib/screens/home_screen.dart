@@ -153,38 +153,34 @@ class _SectorFilter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 48,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        itemCount: sectors.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 8),
-        itemBuilder: (_, i) {
-          final s = sectors[i];
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: Row(
+        children: sectors.asMap().entries.map((entry) {
+          final i = entry.key;
+          final s = entry.value;
           final isSelected = s == selected;
-          return FilterChip(
-            label: Text(s),
-            selected: isSelected,
-            onSelected: (_) => onChanged(s),
-            showCheckmark: false,
-            labelStyle: TextStyle(
-              fontSize: 13,
-              fontWeight:
-                  isSelected ? FontWeight.w600 : FontWeight.normal,
-              color: isSelected ? Colors.white : AppTheme.textSecondary,
+          return Padding(
+            padding: EdgeInsets.only(right: i < sectors.length - 1 ? 8 : 0),
+            child: FilterChip(
+              label: Text(s),
+              selected: isSelected,
+              onSelected: (_) => onChanged(s),
+              showCheckmark: false,
+              labelStyle: TextStyle(
+                fontSize: 13,
+                fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                color: isSelected ? Colors.white : AppTheme.textSecondary,
+              ),
+              selectedColor: AppTheme.primary,
+              backgroundColor: Colors.white,
+              side: BorderSide(
+                color: isSelected ? AppTheme.primary : AppTheme.divider,
+              ),
             ),
-            selectedColor: AppTheme.primary,
-            backgroundColor: Colors.white,
-            side: BorderSide(
-              color: isSelected
-                  ? AppTheme.primary
-                  : AppTheme.divider,
-            ),
-            padding:
-                const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
           );
-        },
+        }).toList(),
       ),
     );
   }

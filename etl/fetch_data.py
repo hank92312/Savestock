@@ -118,12 +118,13 @@ def save_to_db(data):
     with engine.begin() as conn:
         # 1. 更新 Stock_Master
         upsert_stock_master = text("""
-            INSERT INTO Stock_Master (Stock_ID, Name, Sector, Avg_Dividend_2Y, Last_Updated)
-            VALUES (:sid, :name, :sector, :avg_div, CURRENT_TIMESTAMP)
+            INSERT INTO Stock_Master (Stock_ID, Name, Sector, Avg_Dividend_2Y, Is_Default, Last_Updated)
+            VALUES (:sid, :name, :sector, :avg_div, 1, CURRENT_TIMESTAMP)
             ON CONFLICT (Stock_ID) DO UPDATE SET
                 Name = EXCLUDED.Name,
                 Sector = EXCLUDED.Sector,
                 Avg_Dividend_2Y = EXCLUDED.Avg_Dividend_2Y,
+                Is_Default = 1,
                 Last_Updated = CURRENT_TIMESTAMP;
         """)
         conn.execute(upsert_stock_master, {

@@ -16,6 +16,7 @@ class SectorBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (stock.sector == 'Unknown') return const SizedBox.shrink();
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
