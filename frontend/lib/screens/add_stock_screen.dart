@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../models/stock.dart';
 import '../services/api_service.dart';
@@ -14,37 +15,92 @@ class AddStockScreen extends StatefulWidget {
 
 class _AddStockScreenState extends State<AddStockScreen> {
   final _controller = TextEditingController();
+  Timer? _debounce;
+
+  // 候選清單狀態
+  List<SearchCandidate> _candidates = [];
+  bool _loadingCandidates = false;
+
+  // 選取後查詢結果狀態
   Stock? _result;
   bool _searching = false;
   bool _adding = false;
   String? _error;
-  bool _added = false; // 是否已加入此股票
+  bool _added = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.addListener(_onTextChanged);
+  }
 
   @override
   void dispose() {
+    _debounce?.cancel();
+    _controller.removeListener(_onTextChanged);
     _controller.dispose();
     super.dispose();
   }
 
-  Future<void> _search() async {
+  void _onTextChanged() {
     final q = _controller.text.trim();
-    if (q.isEmpty) return;
 
+    // 清空已選結果
+    if (_result != null || _error != null) {
+      setState(() {
+        _result = null;
+        _error = null;
+        _added = false;
+      });
+    }
+
+    // 清空輸入時隱藏候選
+    if (q.isEmpty) {
+      _debounce?.cancel();
+      setState(() => _candidates = []);
+      return;
+    }
+
+    // Debounce 300ms
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 300), () => _searchCandidates(q));
+  }
+
+  Future<void> _searchCandidates(String q) async {
+    setState(() => _loadingCandidates = true);
+    try {
+      final candidates = await ApiService.searchStocks(q);
+      if (!mounted) return;
+      setState(() {
+        _candidates = candidates;
+        _loadingCandidates = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loadingCandidates = false);
+    }
+  }
+
+  Future<void> _selectCandidate(SearchCandidate candidate) async {
     setState(() {
+      _candidates = [];
       _searching = true;
       _result = null;
       _error = null;
       _added = false;
+      _controller.text = candidate.code; // 填入純代號
     });
 
     try {
-      final stock = await ApiService.lookupStock(q);
+      final stock = await ApiService.lookupStock(candidate.stockId);
+      if (!mounted) return;
       setState(() {
         _result = stock;
         _searching = false;
-        if (stock == null) _error = '查無「$q」，請確認代號是否正確（例如：0050、2330）';
+        if (stock == null) _error = '查無「${candidate.code}」資料，請稍後再試';
       });
     } catch (_) {
+      if (!mounted) return;
       setState(() {
         _error = '查詢失敗，請確認網路連線後再試';
         _searching = false;
@@ -92,8 +148,7 @@ class _AddStockScreenState extends State<AddStockScreen> {
         children: [
           _SearchBar(
             controller: _controller,
-            onSearch: _search,
-            isSearching: _searching,
+            isSearching: _searching || _loadingCandidates,
           ),
           const Divider(height: 1, color: AppTheme.divider),
           Expanded(
@@ -108,7 +163,15 @@ class _AddStockScreenState extends State<AddStockScreen> {
                         error: _error,
                         onAdd: _added ? null : _add,
                       )
-                    : _EmptyView(error: _error),
+                    : _candidates.isNotEmpty
+                        ? _CandidateList(
+                            candidates: _candidates,
+                            onSelect: _selectCandidate,
+                          )
+                        : _EmptyView(
+                            error: _error,
+                            showLoading: _loadingCandidates,
+                          ),
           ),
         ],
       ),
@@ -116,78 +179,118 @@ class _AddStockScreenState extends State<AddStockScreen> {
   }
 }
 
-// ── 搜尋列 ──────────────────────────────────────────────────
+// ── 搜尋列 ──────────────────────────────────────────────────────
 
 class _SearchBar extends StatelessWidget {
   final TextEditingController controller;
-  final VoidCallback onSearch;
   final bool isSearching;
 
-  const _SearchBar({
-    required this.controller,
-    required this.onSearch,
-    required this.isSearching,
-  });
+  const _SearchBar({required this.controller, required this.isSearching});
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.all(16),
-      child: Row(
-        children: [
-          Expanded(
-            child: TextField(
-              controller: controller,
-              autofocus: true,
-              keyboardType: TextInputType.text,
-              textInputAction: TextInputAction.search,
-              onSubmitted: (_) => onSearch(),
-              decoration: InputDecoration(
-                hintText: '輸入股票代號（如 0050、2330、2412）',
-                prefixIcon: const Icon(Icons.search_rounded),
-                filled: true,
-                fillColor: AppTheme.surface,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: AppTheme.divider),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: AppTheme.divider),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide:
-                      const BorderSide(color: AppTheme.primary, width: 2),
-                ),
-                contentPadding: const EdgeInsets.symmetric(vertical: 14),
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          FilledButton(
-            onPressed: isSearching ? null : onSearch,
-            style: FilledButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
-            ),
-            child: isSearching
-                ? const SizedBox(
+      child: TextField(
+        controller: controller,
+        autofocus: true,
+        keyboardType: TextInputType.text,
+        textInputAction: TextInputAction.search,
+        decoration: InputDecoration(
+          hintText: '輸入股票代號或中文名稱（如 0050、台積電）',
+          prefixIcon: const Icon(Icons.search_rounded),
+          suffixIcon: isSearching
+              ? const Padding(
+                  padding: EdgeInsets.all(14),
+                  child: SizedBox(
                     width: 18,
                     height: 18,
-                    child: CircularProgressIndicator(
-                        strokeWidth: 2, color: Colors.white),
-                  )
-                : const Text('查詢'),
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                )
+              : null,
+          filled: true,
+          fillColor: AppTheme.surface,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: AppTheme.divider),
           ),
-        ],
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: AppTheme.divider),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: AppTheme.primary, width: 2),
+          ),
+          contentPadding:
+              const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+        ),
       ),
     );
   }
 }
 
-// ── 查詢結果 ─────────────────────────────────────────────────
+// ── 候選清單 ────────────────────────────────────────────────────
+
+class _CandidateList extends StatelessWidget {
+  final List<SearchCandidate> candidates;
+  final ValueChanged<SearchCandidate> onSelect;
+
+  const _CandidateList({required this.candidates, required this.onSelect});
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView.separated(
+      itemCount: candidates.length,
+      separatorBuilder: (_, __) =>
+          const Divider(height: 1, indent: 56, color: AppTheme.divider),
+      itemBuilder: (context, i) {
+        final c = candidates[i];
+        return ListTile(
+          leading: Container(
+            width: 40,
+            height: 40,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: AppTheme.primary.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              c.code.length <= 4 ? c.code : c.code.substring(0, 4),
+              style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: AppTheme.primary,
+              ),
+            ),
+          ),
+          title: Text(
+            c.name,
+            style: const TextStyle(
+              fontWeight: FontWeight.w600,
+              fontSize: 15,
+            ),
+          ),
+          subtitle: Text(
+            c.code,
+            style: const TextStyle(
+              color: AppTheme.textSecondary,
+              fontSize: 13,
+            ),
+          ),
+          trailing: const Icon(
+            Icons.chevron_right_rounded,
+            color: AppTheme.textSecondary,
+          ),
+          onTap: () => onSelect(c),
+        );
+      },
+    );
+  }
+}
+
+// ── 查詢結果 ──────────────────────────────────────────────────
 
 class _ResultView extends StatelessWidget {
   final Stock stock;
@@ -222,14 +325,9 @@ class _ResultView extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
-          // 與首頁相同的股票卡片
           StockCard(stock: stock, isTablet: isTablet),
           const SizedBox(height: 16),
-          if (error != null)
-            _Banner(
-              message: error!,
-              isError: true,
-            ),
+          if (error != null) _Banner(message: error!, isError: true),
           if (added)
             const _Banner(
               message: '已加入我的股票，下次開啟時將自動更新最新資料',
@@ -268,14 +366,19 @@ class _ResultView extends StatelessWidget {
   }
 }
 
-// ── 初始引導畫面 ─────────────────────────────────────────────
+// ── 初始 / 錯誤畫面 ──────────────────────────────────────────
 
 class _EmptyView extends StatelessWidget {
   final String? error;
-  const _EmptyView({this.error});
+  final bool showLoading;
+  const _EmptyView({this.error, this.showLoading = false});
 
   @override
   Widget build(BuildContext context) {
+    if (showLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
     if (error != null) {
       return Center(
         child: Padding(
@@ -308,7 +411,7 @@ class _EmptyView extends StatelessWidget {
                 size: 64, color: Colors.grey.shade300),
             const SizedBox(height: 20),
             const Text(
-              '輸入股票代號查詢',
+              '搜尋任意台股',
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w700,
@@ -317,7 +420,7 @@ class _EmptyView extends StatelessWidget {
             ),
             const SizedBox(height: 10),
             const Text(
-              '輸入股票代號即可查詢任意台股\n\n例如：\n0050 → 元大台灣50\n2330 → 台積電\n2412 → 中華電信\n\n系統會即時從網路取得最新股價與股利，計算估算殖利率後顯示',
+              '輸入代號或中文名稱（部分亦可）\n系統會即時列出匹配股票供你選擇\n\n例如：\n「005」→ 0050、0051、0056…\n「台積」→ 台積電(2330)\n「中光」→ 中光電(5371，上櫃)',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 14,
@@ -332,7 +435,7 @@ class _EmptyView extends StatelessWidget {
   }
 }
 
-// ── 載入中 ───────────────────────────────────────────────────
+// ── 載入中 ─────────────────────────────────────────────────────
 
 class _LoadingView extends StatelessWidget {
   const _LoadingView();
@@ -351,7 +454,7 @@ class _LoadingView extends StatelessWidget {
       );
 }
 
-// ── 訊息橫幅 ─────────────────────────────────────────────────
+// ── 訊息橫幅 ──────────────────────────────────────────────────
 
 class _Banner extends StatelessWidget {
   final String message;

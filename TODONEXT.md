@@ -1,6 +1,6 @@
 # Savestock — 後續待辦事項 (TODONEXT)
 
-> 最後更新：2026-06-05
+> 最後更新：2026-06-05（第二次）
 > 目前進度：Phase 1（ETL）✅ Phase 2（API）✅ Phase 3（Flutter）進行中
 
 ---
@@ -41,34 +41,29 @@
 
 ---
 
-## 🔴 任意台股模糊搜尋（下次主功能 — 規格已定）
+## ✅ 任意台股模糊搜尋（已完成，待前端目視驗收）
 
-> 目標：使用者在「查詢股票」輸入 **代號(部分)** 或 **中文名(部分)**，即時顯示**候選清單**（代號＋名稱），點選後查詢並可加入。現況只支援單筆精確 lookup、且硬補 `.TW`（上櫃會失敗）。
+**後端 API 實測通過（2026-06-05）：**
+- `GET /stocks/search?q=005` → 0050.TW 元大台灣50、0051…（代號前綴，排序正確）
+- `GET /stocks/search?q=台積` → 2330.TW 台積電（中文模糊）
+- `GET /stocks/search?q=中光` → 5371.TWO 中光電（上櫃 `.TWO` 正確）
+- `GET /stocks/search?q=6147` → 6147.TWO 頎邦（上櫃代號）
+- `lookup` 已改用快取決定 `.TW`/`.TWO`，移除舊有硬補 `.TW`
 
-**已實測確認的資料來源：**
+**資料來源（快取 24h TTL）：**
+- 上市＋ETF：`STOCK_DAY_ALL`（1362 檔）；非交易日退回 `t187ap03_L`
+- 上櫃：TPEx `tpex_mainboard_daily_close_quotes`（`verify=False`，此環境 SSL 憑證問題）
 
-| 市場 | 來源 | 狀態 | yfinance 後綴 |
-|------|------|------|------|
-| 上市（含 ETF）| `https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL`（欄位 `Code`/`Name`，1362 檔，**含 0050**）| ✅ 可用 | `.TW` |
-| 上櫃（OTC）| TPEx openapi | ⚠️ **此環境 SSL 憑證驗證失敗**，待決策 | `.TWO` |
+**前端已改寫（待目視驗收）：**
+- 輸入 debounce 300ms → `searchStocks()` → `_CandidateList` ListView
+- 點選候選 → `lookupStock()` → 顯示 StockCard + 加入按鈕
+- 搜尋列移除「查詢」按鈕，改為 suffix spinner 顯示載入狀態
 
-**待決策（下次開工先定）：**
-1. 上櫃名稱來源：`verify=False`（不安全）／改用 `isin.twse.com.tw` ISIN 清單／或先只做上市。
-2. `STOCK_DAY_ALL` 是「每日成交」資料，非交易日可能空或過期 → 名稱主檔是否改用更穩定的 ISIN 清單？
-
-**後端規格：**
-- 新增 `GET /stocks/search?q=&limit=20` → 回 `[{stock_id, name, market}]`（已含正確後綴）。
-  - q 為數字/英數 → 比對代號前綴；q 含中文 → 比對名稱子字串。
-- 啟動或首次呼叫載入全證券快取，24h TTL。
-- `lookup` 改用快取決定 `.TW`/`.TWO`，移除硬補 `.TW`。
-
-**前端規格：** `add_stock_screen` 輸入 debounce 300ms → 呼叫 search → ListView 顯示候選 → 點選 → lookup → 顯示卡片 + 加入按鈕。
-
-**驗收條件（下次）：**
-- `2330` → 候選含 台積電(2330)；`台積` → 候選含 2330。
-- `0050` → 候選含 元大台灣50。
-- `中光電`（上櫃）→ 候選含 5371（`.TWO`）。
-- 點選任一候選 → 正確查到並可加入我的股票。
+**驗收條件：**
+- [ ] 輸入 `005` → 即時顯示「0050 元大台灣50」等候選清單
+- [ ] 輸入 `台積` → 出現「2330 台積電」
+- [ ] 輸入 `中光` → 出現「5371 中光電」（上櫃）
+- [ ] 點選任一候選 → 顯示 StockCard + 可加入我的股票
 
 ---
 

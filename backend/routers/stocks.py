@@ -5,41 +5,73 @@ from datetime import datetime, timedelta
 import yfinance as yf
 import requests as req_lib
 
-# 模組層級快取：{ 簡稱/全名 → 股票代號 }，第一次查詢時從 TWSE 載入
-_tw_name_cache: dict[str, str] = {}
-_tw_cache_loaded = False
+# ── 全證券搜尋快取 ──────────────────────────────────────────────
+# code (不含後綴) → {"name": str, "suffix": ".TW" | ".TWO"}
+_search_cache: dict[str, dict] = {}
+_search_cache_loaded_at: datetime | None = None
+_CACHE_TTL = timedelta(hours=24)
+_UA = {"User-Agent": "Mozilla/5.0"}
 
 
-def _load_tw_name_cache() -> None:
-    """從 TWSE openapi 載入所有上市公司名稱→代號對應表（只載入一次）。"""
-    global _tw_cache_loaded
-    if _tw_cache_loaded:
+def _load_search_cache() -> None:
+    """載入上市(含ETF) + 上櫃 全證券名稱快取，24h TTL。"""
+    global _search_cache_loaded_at
+    if _search_cache_loaded_at and datetime.now() - _search_cache_loaded_at < _CACHE_TTL:
         return
+
+    new_cache: dict[str, dict] = {}
+
+    # 1. 上市 + ETF：TWSE STOCK_DAY_ALL（欄位 Code / Name）
     try:
         r = req_lib.get(
-            "https://openapi.twse.com.tw/v1/opendata/t187ap03_L",
-            timeout=10,
-            headers={"User-Agent": "Mozilla/5.0"},
+            "https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL",
+            timeout=10, headers=_UA,
         )
-        for item in r.json():
-            code = item.get("公司代號", "")
-            short = item.get("公司簡稱", "")
-            full = item.get("公司名稱", "")
-            if code:
-                if short:
-                    _tw_name_cache[short] = code
-                if full:
-                    _tw_name_cache[full] = code
-        _tw_cache_loaded = True
+        data = r.json()
+        if len(data) > 100:          # 非交易日可能為空，有資料才更新
+            for item in data:
+                code = item.get("Code", "").strip()
+                name = item.get("Name", "").strip()
+                if code and name:
+                    new_cache[code] = {"name": name, "suffix": ".TW"}
     except Exception:
         pass
 
+    # 若 STOCK_DAY_ALL 為空（非交易日），退回 t187ap03_L（公司主檔，無 ETF 但穩定）
+    if not new_cache:
+        try:
+            r = req_lib.get(
+                "https://openapi.twse.com.tw/v1/opendata/t187ap03_L",
+                timeout=10, headers=_UA,
+            )
+            for item in r.json():
+                code = item.get("公司代號", "").strip()
+                name = (item.get("公司簡稱") or item.get("公司名稱", "")).strip()
+                if code and name:
+                    new_cache[code] = {"name": name, "suffix": ".TW"}
+        except Exception:
+            pass
+
+    # 上櫃（TPEx）不在本專案範圍內，僅支援上市股票。
+    if new_cache:
+        _search_cache.update(new_cache)
+        _search_cache_loaded_at = datetime.now()
+
+
+def _resolve_stock_id(code: str) -> str:
+    """將不含後綴的代號解析成完整 stock_id（.TW 或 .TWO）。"""
+    _load_search_cache()
+    entry = _search_cache.get(code.upper())
+    if entry:
+        return f"{code.upper()}{entry['suffix']}"
+    return f"{code.upper()}.TW"      # 找不到就預設上市
+
 
 def _search_tw_code_by_name(chinese_name: str) -> str | None:
-    """用中文名稱（部分符合）查台股代號。"""
-    _load_tw_name_cache()
-    for name, code in _tw_name_cache.items():
-        if chinese_name in name or name in chinese_name:
+    """用中文名稱（部分符合）查台股代號（不含後綴）。"""
+    _load_search_cache()
+    for code, info in _search_cache.items():
+        if chinese_name in info["name"] or info["name"] in chinese_name:
             return code
     return None
 
@@ -109,7 +141,7 @@ def _fetch_and_upsert(sid: str, conn) -> dict | None:
         name = existing.Name  # 已有名稱就保留
     else:
         # 新股票：優先向 TWSE 抓中文名，失敗才用 yfinance 英文名
-        code_only = sid.replace(".TW", "")
+        code_only = sid.replace(".TWO", "").replace(".TW", "")
         name = _get_tw_chinese_name(code_only) or en_name
 
     # 計算近 2 年平均股利
@@ -191,9 +223,44 @@ def get_default_stocks(conn=Depends(get_db)):
     return [_row_to_dict(r) for r in rows]
 
 
+@router.get("/search")
+def search_stocks(
+    q: str = Query(..., min_length=1),
+    limit: int = Query(20, ge=1, le=50),
+):
+    """模糊搜尋台股：輸入代號前綴或中文名稱部分字詞，回傳候選清單。"""
+    _load_search_cache()
+    q = q.strip()
+    has_chinese = any('一' <= c <= '鿿' for c in q)
+    q_upper = q.upper()
+
+    results = []
+    for code, info in _search_cache.items():
+        if has_chinese:
+            if q in info["name"]:
+                results.append({
+                    "stock_id": f"{code}{info['suffix']}",
+                    "name": info["name"],
+                })
+        else:
+            if code.startswith(q_upper):
+                results.append({
+                    "stock_id": f"{code}{info['suffix']}",
+                    "name": info["name"],
+                })
+        if len(results) >= limit:
+            break
+
+    # 代號前綴搜尋：按代號排序讓最短（最精確）的優先
+    if not has_chinese:
+        results.sort(key=lambda x: x["stock_id"])
+
+    return results[:limit]
+
+
 @router.get("/lookup/{stock_id}")
 def lookup_stock(stock_id: str, conn=Depends(get_db)):
-    """即時查詢任意台股。支援股票代號（0050）或中文名稱（台積電）。"""
+    """即時查詢任意台股。支援股票代號（0050、6147）或中文名稱（台積電）。"""
     query = stock_id.strip()
 
     # 判斷是否包含中文
@@ -207,19 +274,21 @@ def lookup_stock(stock_id: str, conn=Depends(get_db)):
         if row:
             sid = row.Stock_ID
         else:
-            # 2. 向 TWSE 查名稱對應代號
+            # 2. 向快取查名稱對應代號
             code = _search_tw_code_by_name(query)
             if code:
-                sid = f"{code}.TW"
+                sid = _resolve_stock_id(code)
             else:
                 raise HTTPException(
                     status_code=404,
                     detail=f"找不到「{query}」，請改用股票代號查詢（如：2330）",
                 )
     else:
-        sid = query.upper()
-        if not sid.endswith(".TW"):
-            sid = f"{sid}.TW"
+        # 已含後綴則直接用，否則從快取解析正確後綴（.TW 或 .TWO）
+        if query.upper().endswith(".TW") or query.upper().endswith(".TWO"):
+            sid = query.upper()
+        else:
+            sid = _resolve_stock_id(query)
 
     result = _fetch_and_upsert(sid, conn)
     if result is None:
