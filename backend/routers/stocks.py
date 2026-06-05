@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import text
 from database import get_db
 from datetime import datetime, timedelta
+import re
 import yfinance as yf
 import requests as req_lib
 
@@ -121,7 +122,7 @@ def _row_to_dict(row):
 def _fetch_and_upsert(sid: str, conn) -> dict | None:
     """從 yfinance 抓取最新資料並寫入 DB，回傳股票 dict 或 None（查無此股）。"""
     ticker = yf.Ticker(sid)
-    hist = ticker.history(period="1mo")
+    hist = ticker.history(period="1y")
     # yfinance 可能回傳當日尚未收盤的不完整列（Close/Volume 為 NaN），須剔除
     hist = hist.dropna(subset=["Close", "Volume"])
     if hist.empty:
@@ -180,6 +181,7 @@ def _fetch_and_upsert(sid: str, conn) -> dict | None:
             Last_Updated = CURRENT_TIMESTAMP
     """), {"sid": sid, "name": name, "sector": sector, "avg_div": avg_div})
 
+    # 最新一筆：UPSERT（確保今日警示最新）
     conn.execute(text("""
         INSERT INTO Daily_Prices (Stock_ID, Date, Close_Price, Volume, Alert_Flag, Alert_Reason)
         VALUES (:sid, :date, :close, :volume, :alert_flag, :alert_reason)
@@ -190,6 +192,18 @@ def _fetch_and_upsert(sid: str, conn) -> dict | None:
             Alert_Reason = EXCLUDED.Alert_Reason
     """), {"sid": sid, "date": today, "close": close, "volume": volume,
            "alert_flag": alert_flag, "alert_reason": alert_reason})
+
+    # 歷史列：DO NOTHING 保留已有警示資料
+    for ts, row in hist.iloc[:-1].iterrows():
+        try:
+            conn.execute(text("""
+                INSERT INTO Daily_Prices (Stock_ID, Date, Close_Price, Volume, Alert_Flag, Alert_Reason)
+                VALUES (:sid, :date, :close, :volume, 0, '')
+                ON CONFLICT (Stock_ID, Date) DO NOTHING
+            """), {"sid": sid, "date": ts.date(),
+                   "close": float(row["Close"]), "volume": int(row["Volume"])})
+        except Exception:
+            pass
 
     yield_est = round(avg_div / close * 100, 2) if close and avg_div else None
     return {
@@ -292,6 +306,12 @@ def lookup_stock(stock_id: str, conn=Depends(get_db)):
 
     result = _fetch_and_upsert(sid, conn)
     if result is None:
+        code_only = sid.replace(".TWO", "").replace(".TW", "")
+        if re.match(r'^00\d+B$', code_only, re.IGNORECASE):
+            raise HTTPException(
+                status_code=404,
+                detail=f"「{code_only}」為低流動性債券 ETF，Yahoo Finance 暫無資料，目前不支援查詢",
+            )
         raise HTTPException(status_code=404, detail="查無此股票，請確認代號是否正確")
     return result
 

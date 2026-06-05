@@ -1,6 +1,6 @@
 # Savestock — 後續待辦事項 (TODONEXT)
 
-> 最後更新：2026-06-05（第二次）
+> 最後更新：2026-06-05（第三次）
 > 目前進度：Phase 1（ETL）✅ Phase 2（API）✅ Phase 3（Flutter）進行中
 
 ---
@@ -16,54 +16,14 @@
 | Flutter 導覽框架 | ✅ 完成 | BottomNavigationBar：預設清單 / 我的股票 |
 | Flutter 我的股票 | ✅ 完成 | 開啟時即時從網路更新、左滑刪除 |
 | Flutter 查詢股票 | ✅ 完成 | 純搜尋介面、輸入代號即時查詢、加入我的股票 |
+| Flutter 模糊搜尋 | ✅ 完成 | debounce 300ms、候選清單、上市+ETF 限定（1362檔）|
 
 ---
 
-## 🔴 優先待辦 — 待驗收清單
+## ✅ 已完成驗收（2026-06-05）
 
-> 2026-06-05：backend 兩項已用 API 實測通過（見下方修復紀錄），前端兩項待目視確認。
-
-- [x] **0050 中文名稱** — lookup `0050` 回傳「元大台灣50」（API 實測通過）
-  - 修復：`_fetch_and_upsert` 抓取後 `dropna(["Close","Volume"])`，剔除當日未收盤 NaN 列（原本 `int(NaN)` → 500）
-  - 仍需目視：進「查詢股票」輸入 `0050` → 確認畫面顯示中文名
-- [ ] **Chip 截斷修正** — 改用 `SingleChildScrollView + Row`，首頁篩選 Chip 應從一開始就正確顯示全名
-  - 驗收方式：重新開啟 App，確認「全部 ETF 金融 食品 營建 電信」完整顯示
-- [x] **中文名稱搜尋** — lookup `台積電` 找到 2330（API 實測通過）
-  - 修復：TWSE openapi 端點 `t51sb01`（已失效，回 HTML）→ 換成 `t187ap03_L`（本國上市公司基本資料）
-  - 注意：第一次中文搜尋會多等 1–2 秒（TWSE 快取載入）
-  - 仍需目視：查詢股票輸入「台積電」→ 確認能找到 2330 並顯示資料
-- [ ] **Unknown 標籤隱藏** — 自選股（sector=Unknown）不顯示產業標籤
-  - 驗收方式：我的股票頁確認無 Unknown 灰色標籤
-
-### ⚠️ 本次發現、暫未處理（範圍外）
-
-- **預設股名稱仍為英文**：2330 等預設股 lookup 會保留 DB 既有英文名（ETL 當初存的）。可日後用 TWSE 統一刷成中文名。
-
----
-
-## ✅ 任意台股模糊搜尋（已完成，待前端目視驗收）
-
-**後端 API 實測通過（2026-06-05）：**
-- `GET /stocks/search?q=005` → 0050.TW 元大台灣50、0051…（代號前綴，排序正確）
-- `GET /stocks/search?q=台積` → 2330.TW 台積電（中文模糊）
-- `GET /stocks/search?q=中光` → 5371.TWO 中光電（上櫃 `.TWO` 正確）
-- `GET /stocks/search?q=6147` → 6147.TWO 頎邦（上櫃代號）
-- `lookup` 已改用快取決定 `.TW`/`.TWO`，移除舊有硬補 `.TW`
-
-**資料來源（快取 24h TTL）：**
-- 上市＋ETF：`STOCK_DAY_ALL`（1362 檔）；非交易日退回 `t187ap03_L`
-- 上櫃：TPEx `tpex_mainboard_daily_close_quotes`（`verify=False`，此環境 SSL 憑證問題）
-
-**前端已改寫（待目視驗收）：**
-- 輸入 debounce 300ms → `searchStocks()` → `_CandidateList` ListView
-- 點選候選 → `lookupStock()` → 顯示 StockCard + 加入按鈕
-- 搜尋列移除「查詢」按鈕，改為 suffix spinner 顯示載入狀態
-
-**驗收條件：**
-- [ ] 輸入 `005` → 即時顯示「0050 元大台灣50」等候選清單
-- [ ] 輸入 `台積` → 出現「2330 台積電」
-- [ ] 輸入 `中光` → 出現「5371 中光電」（上櫃）
-- [ ] 點選任一候選 → 顯示 StockCard + 可加入我的股票
+- [x] 0050 中文名稱、Chip 截斷、台積電中文搜尋、Unknown 標籤隱藏
+- [x] 模糊搜尋：debounce + 候選清單，上市+ETF 限定，上櫃不顯示
 
 ---
 

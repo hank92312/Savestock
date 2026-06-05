@@ -47,9 +47,10 @@ def fetch_stock_data(stock_id: str, name: str, sector: str):
     """
     print(f"正在抓取 {stock_id} 的資料...")
     ticker = yf.Ticker(stock_id)
-    
-    # 1. 抓取歷史股價
-    hist = ticker.history(period="1mo")
+
+    # 1. 抓取歷史股價（最多 1 年，剔除未收盤的 NaN 列）
+    hist = ticker.history(period="1y")
+    hist = hist.dropna(subset=["Close", "Volume"])
     if hist.empty:
         print(f"找不到 {stock_id} 的股價資料")
         return None
@@ -99,16 +100,25 @@ def fetch_stock_data(stock_id: str, name: str, sector: str):
     if alert_reason:
         alert_flag = True
 
+    # 所有歷史列（警示只標記最後一筆）
+    price_rows = []
+    latest_ts = hist.index[-1]
+    for ts, row in hist.iterrows():
+        is_latest = ts == latest_ts
+        price_rows.append({
+            "date":         ts.date(),
+            "close":        float(row["Close"]),
+            "volume":       int(row["Volume"]),
+            "alert_flag":   alert_flag if is_latest else False,
+            "alert_reason": ", ".join(alert_reason) if is_latest else "",
+        })
+
     return {
-        "stock_id": stock_id,
-        "name": name,
-        "sector": sector,
-        "date": latest_day.name.date(),
-        "close": latest_day['Close'],
-        "volume": latest_day['Volume'],
+        "stock_id":       stock_id,
+        "name":           name,
+        "sector":         sector,
         "avg_dividend_2y": combined_dividend,
-        "alert_flag": alert_flag,
-        "alert_reason": ", ".join(alert_reason)
+        "price_rows":     price_rows,
     }
 
 def save_to_db(data):
@@ -134,24 +144,30 @@ def save_to_db(data):
             "avg_div": data['avg_dividend_2y']
         })
 
-        # 2. 更新 Daily_Prices
-        upsert_daily_price = text("""
-            INSERT INTO Daily_Prices (Stock_ID, Date, Close_Price, Volume, Alert_Flag, Alert_Reason)
-            VALUES (:sid, :date, :close, :volume, :alert_flag, :alert_reason)
-            ON CONFLICT (Stock_ID, Date) DO UPDATE SET
-                Close_Price = EXCLUDED.Close_Price,
-                Volume = EXCLUDED.Volume,
-                Alert_Flag = EXCLUDED.Alert_Flag,
-                Alert_Reason = EXCLUDED.Alert_Reason;
-        """)
-        conn.execute(upsert_daily_price, {
-            "sid": data['stock_id'],
-            "date": data['date'],
-            "close": data['close'],
-            "volume": data['volume'],
-            "alert_flag": data['alert_flag'],
-            "alert_reason": data['alert_reason']
-        })
+        # 2. 更新 Daily_Prices（所有歷史列）
+        #    最新一筆用 UPSERT 覆蓋（確保今日警示最新）
+        #    歷史列用 DO NOTHING 保留已有的警示資料
+        latest_date = data['price_rows'][-1]['date']
+        for pr in data['price_rows']:
+            if pr['date'] == latest_date:
+                conn.execute(text("""
+                    INSERT INTO Daily_Prices (Stock_ID, Date, Close_Price, Volume, Alert_Flag, Alert_Reason)
+                    VALUES (:sid, :date, :close, :volume, :alert_flag, :alert_reason)
+                    ON CONFLICT (Stock_ID, Date) DO UPDATE SET
+                        Close_Price = EXCLUDED.Close_Price,
+                        Volume = EXCLUDED.Volume,
+                        Alert_Flag = EXCLUDED.Alert_Flag,
+                        Alert_Reason = EXCLUDED.Alert_Reason;
+                """), {"sid": data['stock_id'], "date": pr['date'],
+                       "close": pr['close'], "volume": pr['volume'],
+                       "alert_flag": pr['alert_flag'], "alert_reason": pr['alert_reason']})
+            else:
+                conn.execute(text("""
+                    INSERT INTO Daily_Prices (Stock_ID, Date, Close_Price, Volume, Alert_Flag, Alert_Reason)
+                    VALUES (:sid, :date, :close, :volume, 0, '')
+                    ON CONFLICT (Stock_ID, Date) DO NOTHING;
+                """), {"sid": data['stock_id'], "date": pr['date'],
+                       "close": pr['close'], "volume": pr['volume']})
     print(f"資料庫更新成功: {data['stock_id']}")
 
 def main():

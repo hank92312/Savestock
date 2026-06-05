@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/stock.dart';
+import '../screens/stock_detail_screen.dart';
 import '../theme/app_theme.dart';
 import 'sector_badge.dart';
 
@@ -17,7 +18,12 @@ class StockCard extends StatelessWidget {
     return Card(
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
-        onTap: () {}, // 詳情頁（Phase 3 後續）
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => StockDetailScreen(stock: stock),
+          ),
+        ),
         child: Padding(
           padding: EdgeInsets.all(isTablet ? 20 : 16),
           child: Column(

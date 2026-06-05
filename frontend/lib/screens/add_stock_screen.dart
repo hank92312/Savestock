@@ -97,12 +97,11 @@ class _AddStockScreenState extends State<AddStockScreen> {
       setState(() {
         _result = stock;
         _searching = false;
-        if (stock == null) _error = '查無「${candidate.code}」資料，請稍後再試';
       });
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = '查詢失敗，請確認網路連線後再試';
+        _error = e.toString().replaceFirst('Exception: ', '');
         _searching = false;
       });
     }
