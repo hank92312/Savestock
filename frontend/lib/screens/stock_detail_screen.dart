@@ -465,8 +465,11 @@ class _PriceChart extends StatelessWidget {
                 final pt = (idx >= 0 && idx < prices!.length)
                     ? prices![idx]
                     : null;
+                final dateLabel = pt != null
+                    ? '${pt.date.year}/${pt.date.month.toString().padLeft(2, '0')}/${pt.date.day.toString().padLeft(2, '0')}\n'
+                    : '';
                 return LineTooltipItem(
-                  '\$${s.y.toStringAsFixed(1)}${pt?.alertFlag == true ? '\n⚠️ 警示' : ''}',
+                  '$dateLabel\$${s.y.toStringAsFixed(1)}${pt?.alertFlag == true ? '\n⚠️ 警示' : ''}',
                   const TextStyle(
                       color: Colors.white,
                       fontSize: 12,
