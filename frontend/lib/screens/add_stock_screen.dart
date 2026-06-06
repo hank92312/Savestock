@@ -20,6 +20,7 @@ class _AddStockScreenState extends State<AddStockScreen> {
   // 候選清單狀態
   List<SearchCandidate> _candidates = [];
   bool _loadingCandidates = false;
+  String? _noResultsQuery; // 搜尋回傳空清單時記錄查詢詞，供「直接查詢」使用
 
   // 選取後查詢結果狀態
   Stock? _result;
@@ -46,11 +47,12 @@ class _AddStockScreenState extends State<AddStockScreen> {
     final q = _controller.text.trim();
 
     // 清空已選結果
-    if (_result != null || _error != null) {
+    if (_result != null || _error != null || _noResultsQuery != null) {
       setState(() {
         _result = null;
         _error = null;
         _added = false;
+        _noResultsQuery = null;
       });
     }
 
@@ -73,11 +75,12 @@ class _AddStockScreenState extends State<AddStockScreen> {
       if (!mounted) return;
       setState(() {
         _candidates = candidates;
+        _noResultsQuery = candidates.isEmpty ? q : null;
         _loadingCandidates = false;
       });
     } catch (_) {
       if (!mounted) return;
-      setState(() => _loadingCandidates = false);
+      setState(() { _loadingCandidates = false; _noResultsQuery = null; });
     }
   }
 
@@ -105,6 +108,11 @@ class _AddStockScreenState extends State<AddStockScreen> {
         _searching = false;
       });
     }
+  }
+
+  Future<void> _directLookup(String code) async {
+    setState(() => _noResultsQuery = null);
+    await _selectCandidate(SearchCandidate(stockId: code, name: code));
   }
 
   Future<void> _add() async {
@@ -167,10 +175,15 @@ class _AddStockScreenState extends State<AddStockScreen> {
                             candidates: _candidates,
                             onSelect: _selectCandidate,
                           )
-                        : _EmptyView(
-                            error: _error,
-                            showLoading: _loadingCandidates,
-                          ),
+                        : _noResultsQuery != null && _error == null
+                            ? _NoResultsView(
+                                query: _noResultsQuery!,
+                                onDirectLookup: _directLookup,
+                              )
+                            : _EmptyView(
+                                error: _error,
+                                showLoading: _loadingCandidates,
+                              ),
           ),
         ],
       ),
@@ -360,6 +373,57 @@ class _ResultView extends StatelessWidget {
                   ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ── 找不到候選結果 ─────────────────────────────────────────────
+
+class _NoResultsView extends StatelessWidget {
+  final String query;
+  final ValueChanged<String> onDirectLookup;
+  const _NoResultsView({required this.query, required this.onDirectLookup});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(40),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.search_off_rounded,
+                size: 56, color: AppTheme.textSecondary),
+            const SizedBox(height: 16),
+            Text(
+              '找不到「$query」相關股票',
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: AppTheme.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              '若確定代號正確，可直接查詢（部分股票不在搜尋索引中）',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+            ),
+            const SizedBox(height: 20),
+            FilledButton.icon(
+              onPressed: () => onDirectLookup(query),
+              icon: const Icon(Icons.search_rounded, size: 18),
+              label: Text('直接查詢「$query」'),
+              style: FilledButton.styleFrom(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
