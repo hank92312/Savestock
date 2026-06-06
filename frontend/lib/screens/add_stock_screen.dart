@@ -29,10 +29,33 @@ class _AddStockScreenState extends State<AddStockScreen> {
   String? _error;
   bool _added = false;
 
+  // 已追蹤的代號（去後綴），用於將查詢結果標示為「已追蹤」
+  final Set<String> _watchlistIds = {};
+
   @override
   void initState() {
     super.initState();
     _controller.addListener(_onTextChanged);
+    _loadWatchlistIds();
+  }
+
+  /// 去掉 .TW / .TWO 後綴，統一比對格式
+  String _normalizeId(String stockId) =>
+      stockId.toUpperCase().replaceAll(RegExp(r'\.(TW|TWO)$'), '');
+
+  Future<void> _loadWatchlistIds() async {
+    try {
+      final userId = await UserService.getOrCreateUserId();
+      final stocks = await ApiService.fetchWatchlist(userId);
+      if (!mounted) return;
+      setState(() {
+        _watchlistIds
+          ..clear()
+          ..addAll(stocks.map((s) => _normalizeId(s.stockId)));
+      });
+    } catch (_) {
+      // 載入失敗時僅略過標記，不影響查詢功能
+    }
   }
 
   @override
@@ -134,6 +157,7 @@ class _AddStockScreenState extends State<AddStockScreen> {
       setState(() {
         _added = true;
         _adding = false;
+        _watchlistIds.add(_normalizeId(_result!.stockId));
       });
     } catch (_) {
       if (!mounted) return;
@@ -167,6 +191,10 @@ class _AddStockScreenState extends State<AddStockScreen> {
                         isTablet: isTablet,
                         added: _added,
                         adding: _adding,
+                        // 開啟前就已在自選清單（非本次剛加入）
+                        alreadyTracked: !_added &&
+                            _watchlistIds
+                                .contains(_normalizeId(_result!.stockId)),
                         error: _error,
                         onAdd: _added ? null : _add,
                       )
@@ -309,6 +337,7 @@ class _ResultView extends StatelessWidget {
   final bool isTablet;
   final bool added;
   final bool adding;
+  final bool alreadyTracked;
   final String? error;
   final VoidCallback? onAdd;
 
@@ -317,6 +346,7 @@ class _ResultView extends StatelessWidget {
     required this.isTablet,
     required this.added,
     required this.adding,
+    this.alreadyTracked = false,
     this.error,
     this.onAdd,
   });
@@ -345,6 +375,11 @@ class _ResultView extends StatelessWidget {
               message: '已加入我的股票，下次開啟時將自動更新最新資料',
               isError: false,
             ),
+          if (alreadyTracked)
+            const _Banner(
+              message: '這支股票已在你的我的股票清單中',
+              isError: false,
+            ),
           const SizedBox(height: 8),
           SizedBox(
             width: double.infinity,
@@ -354,23 +389,34 @@ class _ResultView extends StatelessWidget {
                     icon: const Icon(Icons.check_rounded),
                     label: const Text('返回我的股票'),
                   )
-                : FilledButton.icon(
-                    onPressed: adding ? null : onAdd,
-                    icon: adding
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(
-                                strokeWidth: 2, color: Colors.white),
-                          )
-                        : const Icon(Icons.bookmark_add_rounded),
-                    label: Text(adding ? '加入中…' : '加入我的股票'),
-                    style: FilledButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12)),
-                    ),
-                  ),
+                : alreadyTracked
+                    ? FilledButton.icon(
+                        onPressed: null,
+                        icon: const Icon(Icons.bookmark_added_rounded),
+                        label: const Text('已追蹤'),
+                        style: FilledButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12)),
+                        ),
+                      )
+                    : FilledButton.icon(
+                        onPressed: adding ? null : onAdd,
+                        icon: adding
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2, color: Colors.white),
+                              )
+                            : const Icon(Icons.bookmark_add_rounded),
+                        label: Text(adding ? '加入中…' : '加入我的股票'),
+                        style: FilledButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12)),
+                        ),
+                      ),
           ),
         ],
       ),

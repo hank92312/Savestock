@@ -91,6 +91,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   selectedSector: _selectedSector,
                   onSectorChanged: (s) =>
                       setState(() => _selectedSector = s),
+                  onRefresh: _loadStocks,
                   isTablet: isTablet,
                   isLandscapeTablet: isLandscapeTablet,
                 ),
@@ -105,6 +106,7 @@ class _StocksView extends StatelessWidget {
   final List<String> sectors;
   final String selectedSector;
   final ValueChanged<String> onSectorChanged;
+  final Future<void> Function() onRefresh;
   final bool isTablet;
   final bool isLandscapeTablet;
 
@@ -113,6 +115,7 @@ class _StocksView extends StatelessWidget {
     required this.sectors,
     required this.selectedSector,
     required this.onSectorChanged,
+    required this.onRefresh,
     required this.isTablet,
     required this.isLandscapeTablet,
   });
@@ -128,11 +131,14 @@ class _StocksView extends StatelessWidget {
         ),
         const Divider(height: 1, color: AppTheme.divider),
         Expanded(
-          child: stocks.isEmpty
-              ? const _EmptyView()
-              : isLandscapeTablet
-                  ? _GridList(stocks: stocks, isTablet: isTablet)
-                  : _SingleList(stocks: stocks, isTablet: isTablet),
+          child: RefreshIndicator(
+            onRefresh: onRefresh,
+            child: stocks.isEmpty
+                ? const _EmptyView()
+                : isLandscapeTablet
+                    ? _GridList(stocks: stocks, isTablet: isTablet)
+                    : _SingleList(stocks: stocks, isTablet: isTablet),
+          ),
         ),
       ],
     );
@@ -196,6 +202,7 @@ class _SingleList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListView.separated(
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.all(16),
       itemCount: stocks.length,
       separatorBuilder: (_, __) => const SizedBox(height: 12),
@@ -215,6 +222,7 @@ class _GridList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GridView.builder(
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.all(20),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 2,
@@ -318,8 +326,14 @@ class _EmptyView extends StatelessWidget {
   const _EmptyView();
 
   @override
-  Widget build(BuildContext context) => const Center(
-        child: Text('此產業目前沒有追蹤股票',
-            style: TextStyle(color: AppTheme.textSecondary)),
+  Widget build(BuildContext context) => ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        children: const [
+          SizedBox(height: 120),
+          Center(
+            child: Text('此產業目前沒有追蹤股票',
+                style: TextStyle(color: AppTheme.textSecondary)),
+          ),
+        ],
       );
 }

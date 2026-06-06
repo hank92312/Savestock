@@ -90,6 +90,10 @@ class ApiService {
     );
     if (res.statusCode == 201) return null;
     final body = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
+    // 達自選股上限：改為友善說明並引導升級，取代後端原始錯誤字串
+    if (res.statusCode == 403) {
+      return '${body['detail'] ?? '已達自選股上限'}\n升級方案即可追蹤更多標的。';
+    }
     return body['detail'] as String? ?? '加入失敗';
   }
 
