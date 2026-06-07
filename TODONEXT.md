@@ -37,6 +37,9 @@
 - [x] **首頁下拉更新**：`RefreshIndicator` + `AlwaysScrollableScrollPhysics`（含空清單/分產業狀態皆可下拉）
 - [x] **已追蹤標記**：查詢頁 initState 載入自選清單；查到已追蹤的股票時，按鈕改「已追蹤」並 disable + banner
 - [x] **自選股上限提示**：`addToWatchlist` 收到 403 時改回傳友善訊息並引導升級（沿用後端實際檔數）
+- [x] **滑鼠拖曳捲動**：自訂 `ScrollBehavior` 加入 mouse，修正 web 下拉刷新失效
+- [x] **圖表 tooltip 日期**：折線圖滑過時顯示 `YYYY/MM/DD` + 股價
+- [x] **新上市股股利年化**：新增 `Stock_Master.Listing_Months`；上市 <24 月改用「上市迄今全部股利 ÷ 上市年數」年化，詳情頁標籤改「上市迄今平均股利」並註明資料涵蓋約 X 個月（ETL + 後端 + 前端全串通，已重跑 ETL）
 
 ## 🟠 P3 — 體驗優化（剩餘）
 
