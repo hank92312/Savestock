@@ -52,13 +52,12 @@
 
 ## 🟡 P4 — 後端補強
 
-- [ ] **ETL 排程自動化**：目前需手動執行，設定 Windows 工作排程器於每日 14:30 自動執行
-
-  ```powershell
-  schtasks /create /tn "SavestockETL" /tr "c:\Savestock\.venv\Scripts\python.exe c:\Savestock\etl\fetch_data.py" /sc daily /st 14:30
-  ```
-
 - [x] **Stock_Master.Default_Drop_Threshold**：ETL 已依產業別寫入小數閾值（營建0.06/ETF0.04/金融0.025/食品0.03/電信0.025）
+- [~] **ETL 排程自動化**：**決定延後到 P5 部署一起做**（本機 Windows 排程只在本電腦開機時有效、價值有限）。部署後改在伺服器（Linux cron / 雲端排程）設定，指向正式 DB。
+  - 本機暫時方案（如需展示時手動啟用）：
+    ```powershell
+    schtasks /create /tn "SavestockETL" /tr "c:\Savestock\.venv\Scripts\python.exe c:\Savestock\etl\fetch_data.py" /sc daily /st 14:30
+    ```
 
 ---
 
@@ -67,6 +66,7 @@
 - [ ] CORS `allow_origins=["*"]` 改為正式網域
 - [ ] SQLite → PostgreSQL（`.env` 的 `DATABASE_URL` 改連線字串即可）
 - [ ] API 部署（Railway / Render / AWS）
+- [ ] **ETL 伺服器排程**（從 P4 移入）：部署後在伺服器設每日自動執行 ETL，指向正式 DB
 - [ ] Flutter 打包：Android APK / iOS IPA
 
 ---
