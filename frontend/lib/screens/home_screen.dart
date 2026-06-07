@@ -3,6 +3,7 @@ import '../models/stock.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/stock_card.dart';
+import 'onboarding_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -77,6 +78,16 @@ class _HomeScreenState extends State<HomeScreen> {
             icon: const Icon(Icons.refresh_rounded),
             tooltip: '更新資料',
             onPressed: _loadStocks,
+          ),
+          IconButton(
+            icon: const Icon(Icons.help_outline_rounded),
+            tooltip: '使用教學',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => const OnboardingScreen(),
+                fullscreenDialog: true,
+              ),
+            ),
           ),
           const SizedBox(width: 4),
         ],

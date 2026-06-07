@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import 'home_screen.dart';
 import 'my_stocks_screen.dart';
+import 'onboarding_screen.dart';
 
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
@@ -17,6 +18,24 @@ class _AppShellState extends State<AppShell> {
     HomeScreen(),
     MyStocksScreen(),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _maybeShowOnboarding();
+  }
+
+  /// 首次開啟（尚未看過導覽）時自動顯示教學導覽
+  Future<void> _maybeShowOnboarding() async {
+    if (await OnboardingScreen.hasSeen()) return;
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const OnboardingScreen(),
+        fullscreenDialog: true,
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
