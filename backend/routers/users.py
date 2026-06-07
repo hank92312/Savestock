@@ -119,7 +119,7 @@ def add_to_watchlist(user_id: int, body: AddStockRequest, conn=Depends(get_db)):
         WHERE ul.User_ID = :uid
         ORDER BY ul.Purchase_Date DESC
         LIMIT 1
-    """), {"uid": user_id}).scalar() or 3
+    """), {"uid": user_id}).scalar() or 5  # 無授權紀錄者預設免費上限 5 檔
 
     if custom_count >= tier_limit:
         raise HTTPException(

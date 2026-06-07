@@ -77,7 +77,7 @@ Yahoo 財經 ──(yfinance)──> ETL 批次運算 ──> savestock.db
 | `Daily_Prices` | `Stock_ID`, `Date`, `Close_Price`, `Volume`, `Alert_Flag`, `Alert_Reason` |
 | `User_Preferences` | `Push_Enabled`, `Email_Enabled`（推播/郵件，尚未接線） |
 
-> ⚠️ 已知不一致：`init_sqlite.sql` 種子 `Free=13` 與設計討論的「免費 3 檔自選」不符；後端在無授權時以 **3** 為預設上限。此項待釐清（見 TODONEXT）。
+> 免費方案自選上限＝**5 檔**（已統一：schema 種子、後端無授權 fallback、前端文案皆為 5）。
 
 ### 3.4 前端 Flutter（`frontend/lib/`）
 | 檔案 | 角色 |

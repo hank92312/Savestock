@@ -4,6 +4,7 @@ import '../services/api_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/stock_card.dart';
 import 'onboarding_screen.dart';
+import 'add_stock_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -74,6 +75,13 @@ class _HomeScreenState extends State<HomeScreen> {
               padding: const EdgeInsets.only(right: 8),
               child: _AlertChip(count: _alertCount),
             ),
+          IconButton(
+            icon: const Icon(Icons.search_rounded),
+            tooltip: '搜尋股票',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const AddStockScreen()),
+            ),
+          ),
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
             tooltip: '更新資料',

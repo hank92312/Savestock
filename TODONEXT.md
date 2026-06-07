@@ -152,4 +152,5 @@ Set-Location C:\Savestock\frontend; flutter run -d chrome --web-port 5000
 | 債券 ETF（00xxB）不支援 | Yahoo Finance 無資料，顯示明確說明而非通用錯誤 |
 | ETL + lookup 寫 1 年歷史 | 股票詳情頁折線圖需要足夠資料（245 筆 ≈ 1 年交易日）|
 | `engine.begin()` 作為 get_db context | SQLite 自動 commit/rollback，無需手動管理 transaction |
-| Plan_Configs: Free=3, Premium=10（自選股上限）| 與 14 檔預設不重疊計算，邏輯更清晰 |
+| Plan_Configs: **Free=5**（自選股上限，已統一 schema/後端/前端）| 與 14 檔預設不重疊計算 |
+| 首頁放大鏡搜尋重用 `AddStockScreen` | 搜尋+一鍵加入邏輯已存在，避免重造 |

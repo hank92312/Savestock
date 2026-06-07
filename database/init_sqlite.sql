@@ -68,5 +68,5 @@ CREATE TABLE User_Preferences (
 );
 
 -- 初始資料填充
-INSERT INTO Plan_Configs (Tier_Name, Max_Total_Stocks) VALUES ('Free', 13);
+INSERT INTO Plan_Configs (Tier_Name, Max_Total_Stocks) VALUES ('Free', 5);
 INSERT INTO Plan_Configs (Tier_Name, Max_Total_Stocks) VALUES ('Premium_Tier_1', 20);
