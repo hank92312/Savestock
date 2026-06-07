@@ -169,7 +169,20 @@ class _StockList extends StatelessWidget {
             await onRemove(stock);
             return false; // 讓 _remove() 自己控制 setState，不用 Dismissible 自動移除
           },
-          child: StockCard(stock: stock, isTablet: isTablet),
+          // 左滑刪除為觸控手勢，桌機/web 滑鼠不易觸發，
+          // 故另加一顆永遠可見的刪除按鈕，確保各平台皆可移除
+          child: Row(
+            children: [
+              Expanded(child: StockCard(stock: stock, isTablet: isTablet)),
+              const SizedBox(width: 4),
+              IconButton(
+                icon: const Icon(Icons.delete_outline_rounded,
+                    color: AppTheme.alertRed),
+                tooltip: '移除',
+                onPressed: () => onRemove(stock),
+              ),
+            ],
+          ),
         );
       },
     );
