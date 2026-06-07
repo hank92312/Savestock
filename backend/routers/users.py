@@ -173,4 +173,7 @@ def refresh_watchlist(user_id: int, conn=Depends(get_db)):
         except Exception as e:
             errors.append({"stock_id": r.Stock_ID, "error": str(e)})
 
+    # 依估算殖利率降序排序（與 GET /watchlist 一致；無殖利率者排最後）
+    results.sort(key=lambda d: d.get("estimated_yield") or -1, reverse=True)
+
     return {"updated": len(results), "errors": errors, "stocks": results}
