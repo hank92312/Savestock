@@ -230,35 +230,61 @@ class _MetricsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppTheme.divider),
-      ),
-      child: Row(
-        children: [
-          _Stat(
-            label: '最新收盤價',
-            value: stock.closePrice != null
-                ? '\$${stock.closePrice!.toStringAsFixed(1)}'
-                : '--',
+    final isNew = stock.isNewListing;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppTheme.divider),
           ),
-          _Divider(),
-          _Stat(
-            label: '近2年平均股利',
-            value: stock.avgDividend2y != null
-                ? '\$${stock.avgDividend2y!.toStringAsFixed(2)}'
-                : '--',
+          child: Row(
+            children: [
+              _Stat(
+                label: '最新收盤價',
+                value: stock.closePrice != null
+                    ? '\$${stock.closePrice!.toStringAsFixed(1)}'
+                    : '--',
+              ),
+              _Divider(),
+              _Stat(
+                label: isNew ? '上市迄今平均股利' : '近2年平均股利',
+                value: stock.avgDividend2y != null
+                    ? '\$${stock.avgDividend2y!.toStringAsFixed(2)}'
+                    : '--',
+              ),
+              _Divider(),
+              _Stat(
+                label: '資料日期',
+                value: stock.lastDate ?? '--',
+              ),
+            ],
           ),
-          _Divider(),
-          _Stat(
-            label: '資料日期',
-            value: stock.lastDate ?? '--',
+        ),
+        if (isNew) ...[
+          const SizedBox(height: 8),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(Icons.info_outline_rounded,
+                  size: 14, color: AppTheme.textSecondary),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  '此股上市未滿 2 年，股利為上市迄今約 ${stock.listingMonths} 個月資料年化估算，僅供參考',
+                  style: const TextStyle(
+                      fontSize: 12,
+                      color: AppTheme.textSecondary,
+                      height: 1.4),
+                ),
+              ),
+            ],
           ),
         ],
-      ),
+      ],
     );
   }
 }

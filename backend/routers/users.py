@@ -50,7 +50,7 @@ def get_watchlist(user_id: int, conn=Depends(get_db)):
         raise HTTPException(status_code=404, detail="User not found")
 
     rows = conn.execute(text("""
-        SELECT sm.Stock_ID, sm.Name, sm.Sector, sm.Avg_Dividend_2Y,
+        SELECT sm.Stock_ID, sm.Name, sm.Sector, sm.Avg_Dividend_2Y, sm.Listing_Months,
                dp.Close_Price, dp.Alert_Flag, dp.Alert_Reason, dp.Date
         FROM User_Stocks us
         JOIN Stock_Master sm ON us.Stock_ID = sm.Stock_ID
@@ -71,6 +71,7 @@ def get_watchlist(user_id: int, conn=Depends(get_db)):
             "name": r.Name,
             "sector": r.Sector,
             "avg_dividend_2y": avg_div,
+            "listing_months": r.Listing_Months,
             "close_price": close,
             "estimated_yield": round(avg_div / close * 100, 2) if close and avg_div else None,
             "alert_flag": bool(r.Alert_Flag),

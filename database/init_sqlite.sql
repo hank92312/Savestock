@@ -29,8 +29,9 @@ CREATE TABLE Stock_Master (
     Stock_ID VARCHAR(20) PRIMARY KEY, 
     Name VARCHAR(100) NOT NULL,
     Sector VARCHAR(50),               
-    Avg_Dividend_2Y REAL,   
-    Default_Drop_Threshold REAL, 
+    Avg_Dividend_2Y REAL,
+    Default_Drop_Threshold REAL,
+    Listing_Months INTEGER,           -- 上市迄今月數；< 24 視為新上市（NULL = 未知，視為已滿2年）
     Last_Updated DATETIME DEFAULT (datetime('now', 'localtime'))
 );
 

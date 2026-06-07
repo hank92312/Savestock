@@ -55,31 +55,51 @@ def fetch_stock_data(stock_id: str, name: str, sector: str):
         print(f"找不到 {stock_id} 的股價資料")
         return None
     
-    # 2. 抓取股息與配股
+    # 2. 判斷上市迄今月數（不滿 2 年改用上市迄今年化）
+    info = ticker.info
+    epoch = None
+    if info:
+        ms = info.get("firstTradeDateMilliseconds")
+        epoch = ms / 1000 if ms else info.get("firstTradeDateEpochUtc")
+    listing_months = None
+    if epoch:
+        try:
+            listing_date = datetime.fromtimestamp(epoch)
+            listing_months = max(int((datetime.now() - listing_date).days / 30.44), 1)
+        except (OverflowError, OSError, ValueError):
+            listing_months = None
+    is_new = listing_months is not None and listing_months < 24
+
+    # 3. 抓取股息與配股
     actions = ticker.actions
-    avg_cash_2y = 0
-    avg_stock_2y = 0
-    
+    avg_cash = 0
+    avg_stock = 0
+
     if not actions.empty:
-        # 處理時區問題，確保比較基準一致
-        two_years_ago = datetime.now() - timedelta(days=365*2)
-        if actions.index.tzinfo:
-            two_years_ago = two_years_ago.replace(tzinfo=actions.index.tzinfo)
+        if is_new:
+            # 上市迄今全部，年化（除以上市年數）
+            src = actions
+            divisor = (listing_months / 12) or 1
         else:
-            two_years_ago = two_years_ago.replace(tzinfo=None)
-            
-        recent_actions = actions[actions.index > two_years_ago]
-        
-        if 'Dividends' in recent_actions.columns:
-            avg_cash_2y = recent_actions['Dividends'].sum() / 2
-        
-        if 'Stock Splits' in recent_actions.columns:
-            stock_splits = recent_actions[recent_actions['Stock Splits'] > 0]
+            # 處理時區問題，確保比較基準一致
+            two_years_ago = datetime.now() - timedelta(days=365*2)
+            if actions.index.tzinfo:
+                two_years_ago = two_years_ago.replace(tzinfo=actions.index.tzinfo)
+            else:
+                two_years_ago = two_years_ago.replace(tzinfo=None)
+            src = actions[actions.index > two_years_ago]
+            divisor = 2
+
+        if 'Dividends' in src.columns:
+            avg_cash = src['Dividends'].sum() / divisor
+
+        if 'Stock Splits' in src.columns:
+            stock_splits = src[src['Stock Splits'] > 0]
             # 台股配股計算邏輯：(拆分比例 - 1) * 10 (面額)
             total_stock_div = sum([(split - 1) * 10 for split in stock_splits['Stock Splits']])
-            avg_stock_2y = total_stock_div / 2
-    
-    combined_dividend = avg_cash_2y + avg_stock_2y
+            avg_stock = total_stock_div / divisor
+
+    combined_dividend = avg_cash + avg_stock
     
     # 3. 獲取最新資料
     latest_day = hist.iloc[-1]
@@ -118,6 +138,7 @@ def fetch_stock_data(stock_id: str, name: str, sector: str):
         "name":           name,
         "sector":         sector,
         "avg_dividend_2y": combined_dividend,
+        "listing_months": listing_months,
         "price_rows":     price_rows,
     }
 
@@ -128,12 +149,13 @@ def save_to_db(data):
     with engine.begin() as conn:
         # 1. 更新 Stock_Master
         upsert_stock_master = text("""
-            INSERT INTO Stock_Master (Stock_ID, Name, Sector, Avg_Dividend_2Y, Is_Default, Last_Updated)
-            VALUES (:sid, :name, :sector, :avg_div, 1, CURRENT_TIMESTAMP)
+            INSERT INTO Stock_Master (Stock_ID, Name, Sector, Avg_Dividend_2Y, Listing_Months, Is_Default, Last_Updated)
+            VALUES (:sid, :name, :sector, :avg_div, :listing_months, 1, CURRENT_TIMESTAMP)
             ON CONFLICT (Stock_ID) DO UPDATE SET
                 Name = EXCLUDED.Name,
                 Sector = EXCLUDED.Sector,
                 Avg_Dividend_2Y = EXCLUDED.Avg_Dividend_2Y,
+                Listing_Months = EXCLUDED.Listing_Months,
                 Is_Default = 1,
                 Last_Updated = CURRENT_TIMESTAMP;
         """)
@@ -141,7 +163,8 @@ def save_to_db(data):
             "sid": data['stock_id'],
             "name": data['name'],
             "sector": data['sector'],
-            "avg_div": data['avg_dividend_2y']
+            "avg_div": data['avg_dividend_2y'],
+            "listing_months": data['listing_months']
         })
 
         # 2. 更新 Daily_Prices（所有歷史列）

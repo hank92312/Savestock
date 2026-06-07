@@ -111,12 +111,44 @@ def _row_to_dict(row):
         "name": row.Name,
         "sector": row.Sector,
         "avg_dividend_2y": avg_div,
+        "listing_months": row.Listing_Months,
         "close_price": close,
         "estimated_yield": yield_est,
         "alert_flag": bool(row.Alert_Flag),
         "alert_reason": row.Alert_Reason,
         "last_date": str(row.Date) if row.Date else None,
     }
+
+
+def _listing_months(info) -> int | None:
+    """從 yfinance info 推算上市迄今月數；無法判斷時回傳 None（視為已滿2年）。"""
+    epoch = None
+    if info:
+        ms = info.get("firstTradeDateMilliseconds")
+        epoch = ms / 1000 if ms else info.get("firstTradeDateEpochUtc")
+    if not epoch:
+        return None
+    try:
+        listing_date = datetime.fromtimestamp(epoch)
+    except (OverflowError, OSError, ValueError):
+        return None
+    return max(int((datetime.now() - listing_date).days / 30.44), 1)
+
+
+def _avg_dividend(actions, listing_months: int | None) -> float:
+    """上市滿2年：近2年現金股利平均(÷2)；不滿2年：上市迄今全部現金股利年化。"""
+    if actions.empty or "Dividends" not in actions.columns:
+        return 0.0
+    is_new = listing_months is not None and listing_months < 24
+    if is_new:
+        total = float(actions["Dividends"].sum())
+        years = listing_months / 12
+        return total / years if years > 0 else total
+    two_years_ago = datetime.now() - timedelta(days=730)
+    if actions.index.tzinfo:
+        two_years_ago = two_years_ago.replace(tzinfo=actions.index.tzinfo)
+    recent = actions[actions.index > two_years_ago]
+    return float(recent["Dividends"].sum()) / 2
 
 
 def _fetch_and_upsert(sid: str, conn) -> dict | None:
@@ -145,15 +177,9 @@ def _fetch_and_upsert(sid: str, conn) -> dict | None:
         code_only = sid.replace(".TWO", "").replace(".TW", "")
         name = _get_tw_chinese_name(code_only) or en_name
 
-    # 計算近 2 年平均股利
-    actions = ticker.actions
-    avg_div = 0.0
-    if not actions.empty and "Dividends" in actions.columns:
-        two_years_ago = datetime.now() - timedelta(days=730)
-        if actions.index.tzinfo:
-            two_years_ago = two_years_ago.replace(tzinfo=actions.index.tzinfo)
-        recent = actions[actions.index > two_years_ago]
-        avg_div = float(recent["Dividends"].sum()) / 2
+    # 計算平均股利（上市不滿2年改用上市迄今年化）
+    listing_months = _listing_months(info)
+    avg_div = _avg_dividend(ticker.actions, listing_months)
 
     latest = hist.iloc[-1]
     prev = hist.iloc[-2] if len(hist) > 1 else latest
@@ -174,12 +200,14 @@ def _fetch_and_upsert(sid: str, conn) -> dict | None:
     alert_reason = ", ".join(alert_reasons)
 
     conn.execute(text("""
-        INSERT INTO Stock_Master (Stock_ID, Name, Sector, Avg_Dividend_2Y, Is_Default, Last_Updated)
-        VALUES (:sid, :name, :sector, :avg_div, 0, CURRENT_TIMESTAMP)
+        INSERT INTO Stock_Master (Stock_ID, Name, Sector, Avg_Dividend_2Y, Listing_Months, Is_Default, Last_Updated)
+        VALUES (:sid, :name, :sector, :avg_div, :listing_months, 0, CURRENT_TIMESTAMP)
         ON CONFLICT (Stock_ID) DO UPDATE SET
             Avg_Dividend_2Y = EXCLUDED.Avg_Dividend_2Y,
+            Listing_Months = EXCLUDED.Listing_Months,
             Last_Updated = CURRENT_TIMESTAMP
-    """), {"sid": sid, "name": name, "sector": sector, "avg_div": avg_div})
+    """), {"sid": sid, "name": name, "sector": sector, "avg_div": avg_div,
+           "listing_months": listing_months})
 
     # 最新一筆：UPSERT（確保今日警示最新）
     conn.execute(text("""
@@ -211,6 +239,7 @@ def _fetch_and_upsert(sid: str, conn) -> dict | None:
         "name": name,
         "sector": sector,
         "avg_dividend_2y": avg_div,
+        "listing_months": listing_months,
         "close_price": close,
         "estimated_yield": yield_est,
         "alert_flag": alert_flag,
@@ -224,7 +253,7 @@ def _fetch_and_upsert(sid: str, conn) -> dict | None:
 @router.get("/")
 def get_default_stocks(conn=Depends(get_db)):
     rows = conn.execute(text(f"""
-        SELECT sm.Stock_ID, sm.Name, sm.Sector, sm.Avg_Dividend_2Y,
+        SELECT sm.Stock_ID, sm.Name, sm.Sector, sm.Avg_Dividend_2Y, sm.Listing_Months,
                dp.Close_Price, dp.Alert_Flag, dp.Alert_Reason, dp.Date
         FROM Stock_Master sm
         {_LATEST_PRICE_JOIN}
@@ -319,7 +348,7 @@ def lookup_stock(stock_id: str, conn=Depends(get_db)):
 @router.get("/{stock_id}")
 def get_stock(stock_id: str, conn=Depends(get_db)):
     row = conn.execute(text(f"""
-        SELECT sm.Stock_ID, sm.Name, sm.Sector, sm.Avg_Dividend_2Y,
+        SELECT sm.Stock_ID, sm.Name, sm.Sector, sm.Avg_Dividend_2Y, sm.Listing_Months,
                dp.Close_Price, dp.Alert_Flag, dp.Alert_Reason, dp.Date
         FROM Stock_Master sm
         {_LATEST_PRICE_JOIN}
