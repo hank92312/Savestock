@@ -139,6 +139,7 @@ def fetch_stock_data(stock_id: str, name: str, sector: str):
         "sector":         sector,
         "avg_dividend_2y": combined_dividend,
         "listing_months": listing_months,
+        "drop_threshold": SECTOR_THRESHOLDS.get(sector, 0.04),  # 小數格式
         "price_rows":     price_rows,
     }
 
@@ -149,12 +150,13 @@ def save_to_db(data):
     with engine.begin() as conn:
         # 1. 更新 Stock_Master
         upsert_stock_master = text("""
-            INSERT INTO Stock_Master (Stock_ID, Name, Sector, Avg_Dividend_2Y, Listing_Months, Is_Default, Last_Updated)
-            VALUES (:sid, :name, :sector, :avg_div, :listing_months, 1, CURRENT_TIMESTAMP)
+            INSERT INTO Stock_Master (Stock_ID, Name, Sector, Avg_Dividend_2Y, Default_Drop_Threshold, Listing_Months, Is_Default, Last_Updated)
+            VALUES (:sid, :name, :sector, :avg_div, :drop_threshold, :listing_months, 1, CURRENT_TIMESTAMP)
             ON CONFLICT (Stock_ID) DO UPDATE SET
                 Name = EXCLUDED.Name,
                 Sector = EXCLUDED.Sector,
                 Avg_Dividend_2Y = EXCLUDED.Avg_Dividend_2Y,
+                Default_Drop_Threshold = EXCLUDED.Default_Drop_Threshold,
                 Listing_Months = EXCLUDED.Listing_Months,
                 Is_Default = 1,
                 Last_Updated = CURRENT_TIMESTAMP;
@@ -164,6 +166,7 @@ def save_to_db(data):
             "name": data['name'],
             "sector": data['sector'],
             "avg_div": data['avg_dividend_2y'],
+            "drop_threshold": data['drop_threshold'],
             "listing_months": data['listing_months']
         })
 

@@ -58,7 +58,7 @@
   schtasks /create /tn "SavestockETL" /tr "c:\Savestock\.venv\Scripts\python.exe c:\Savestock\etl\fetch_data.py" /sc daily /st 14:30
   ```
 
-- [ ] **Stock_Master.Default_Drop_Threshold**：ETL 未寫入此欄位，可補充
+- [x] **Stock_Master.Default_Drop_Threshold**：ETL 已依產業別寫入小數閾值（營建0.06/ETF0.04/金融0.025/食品0.03/電信0.025）
 
 ---
 
