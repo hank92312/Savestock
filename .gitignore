@@ -31,3 +31,4 @@ Thumbs.db
 # Environment & Database
 .env
 *.db
+.claude/
