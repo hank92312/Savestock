@@ -154,50 +154,81 @@ def _listing_months(info) -> int | None:
     return max(int((datetime.now() - listing_date).days / 30.44), 1)
 
 
+_PAR_VALUE = 10.0  # 台股面額；股票股利以面額還原成元
+
+
+def _stock_div_value(ratio) -> float:
+    """yfinance「Stock Splits」配股比 → 股票股利（元，面額還原）。
+    台股配股 X 元對應配股比 (1 + X/10)，故 X =(ratio-1)×10；
+    僅計配股（ratio>1），減資（ratio<1）不視為股利。"""
+    try:
+        r = float(ratio)
+    except (TypeError, ValueError):
+        return 0.0
+    return (r - 1) * _PAR_VALUE if r > 1 else 0.0
+
+
+def _total_div_series(actions):
+    """每個除權息日的『現金股利 + 股票股利(面額還原)』合計序列。"""
+    if actions is None or actions.empty:
+        return None
+    cash = actions["Dividends"].fillna(0) if "Dividends" in actions.columns else 0
+    if "Stock Splits" in actions.columns:
+        stock = actions["Stock Splits"].apply(_stock_div_value)
+    else:
+        stock = 0
+    return cash + stock
+
+
 def _avg_dividend(actions, listing_months: int | None) -> float:
-    """上市滿2年：近2年現金股利平均(÷2)；不滿2年：上市迄今全部現金股利年化。"""
-    if actions.empty or "Dividends" not in actions.columns:
+    """上市滿2年：近2年股利平均(÷2)；不滿2年：上市迄今全部股利年化。
+    股利＝現金股利＋股票股利（配股面額還原）。"""
+    total_series = _total_div_series(actions)
+    if total_series is None:
         return 0.0
     is_new = listing_months is not None and listing_months < 24
     if is_new:
-        total = float(actions["Dividends"].sum())
+        total = float(total_series.sum())
         years = listing_months / 12
         return total / years if years > 0 else total
     two_years_ago = datetime.now() - timedelta(days=730)
     if actions.index.tzinfo:
         two_years_ago = two_years_ago.replace(tzinfo=actions.index.tzinfo)
-    recent = actions[actions.index > two_years_ago]
-    return float(recent["Dividends"].sum()) / 2
+    recent = total_series[total_series.index > two_years_ago]
+    return float(recent.sum()) / 2
 
 
 def _dividend_1y(actions) -> float:
-    """近 12 個月現金股利合計（近一年殖利率用）。"""
-    if actions.empty or "Dividends" not in actions.columns:
+    """近 12 個月股利合計（現金＋配股面額還原；近一年殖利率用）。"""
+    total_series = _total_div_series(actions)
+    if total_series is None:
         return 0.0
     one_year_ago = datetime.now() - timedelta(days=365)
     if actions.index.tzinfo:
         one_year_ago = one_year_ago.replace(tzinfo=actions.index.tzinfo)
-    recent = actions[actions.index > one_year_ago]
-    return float(recent["Dividends"].sum())
+    recent = total_series[total_series.index > one_year_ago]
+    return float(recent.sum())
 
 
 def _upsert_dividends(sid: str, actions, conn) -> None:
-    """將 yfinance 全部現金股利歷史寫入 Dividends 表（供股利折線圖）。"""
-    if actions is None or actions.empty or "Dividends" not in actions.columns:
+    """將 yfinance 股利歷史寫入 Dividends 表（現金與配股分欄，供股利折線圖）。"""
+    if actions is None or actions.empty:
         return
-    for ts, amount in actions["Dividends"].items():
-        try:
-            amt = float(amount)
-        except (TypeError, ValueError):
+    has_cash = "Dividends" in actions.columns
+    has_split = "Stock Splits" in actions.columns
+    for ts in actions.index:
+        cash = float(actions["Dividends"].get(ts, 0) or 0) if has_cash else 0.0
+        stock = _stock_div_value(actions["Stock Splits"].get(ts, 0)) if has_split else 0.0
+        if cash <= 0 and stock <= 0:
             continue
-        if amt <= 0:
-            continue  # 0 多為純配股（split）列，非現金股利
         try:
             conn.execute(text("""
-                INSERT INTO Dividends (Stock_ID, Ex_Date, Amount)
-                VALUES (:sid, :date, :amt)
-                ON CONFLICT (Stock_ID, Ex_Date) DO UPDATE SET Amount = EXCLUDED.Amount
-            """), {"sid": sid, "date": ts.date(), "amt": amt})
+                INSERT INTO Dividends (Stock_ID, Ex_Date, Cash_Dividend, Stock_Dividend)
+                VALUES (:sid, :date, :cash, :stock)
+                ON CONFLICT (Stock_ID, Ex_Date) DO UPDATE SET
+                    Cash_Dividend = EXCLUDED.Cash_Dividend,
+                    Stock_Dividend = EXCLUDED.Stock_Dividend
+            """), {"sid": sid, "date": ts.date(), "cash": cash, "stock": stock})
         except Exception:
             pass
 
@@ -492,10 +523,18 @@ def get_stock_dividends(
 
     cutoff = (datetime.now() - timedelta(days=int(months * 30.44))).date()
     rows = conn.execute(text("""
-        SELECT Ex_Date, Amount
+        SELECT Ex_Date, Cash_Dividend, Stock_Dividend
         FROM Dividends
         WHERE Stock_ID = :sid AND Ex_Date >= :cutoff
         ORDER BY Ex_Date ASC
     """), {"sid": stock_id, "cutoff": str(cutoff)}).fetchall()
 
-    return [{"date": str(r.Ex_Date), "amount": r.Amount} for r in rows]
+    return [
+        {
+            "date": str(r.Ex_Date),
+            "cash": r.Cash_Dividend,
+            "stock": r.Stock_Dividend,
+            "total": round((r.Cash_Dividend or 0) + (r.Stock_Dividend or 0), 4),
+        }
+        for r in rows
+    ]

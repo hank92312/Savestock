@@ -71,8 +71,9 @@ CREATE TABLE User_Preferences (
 -- 8. 股利發放紀錄 (Dividends) — 供詳情頁股利折線圖
 CREATE TABLE Dividends (
     Stock_ID VARCHAR(20) REFERENCES Stock_Master(Stock_ID),
-    Ex_Date DATE NOT NULL,         -- 除息日（yfinance dividends 索引日期）
-    Amount REAL NOT NULL,          -- 每股現金股利
+    Ex_Date DATE NOT NULL,         -- 除權息日（yfinance actions 索引日期）
+    Cash_Dividend REAL DEFAULT 0,  -- 每股現金股利（元）
+    Stock_Dividend REAL DEFAULT 0, -- 每股股票股利（配股，面額還原成元 =(配股比-1)×10）
     UNIQUE(Stock_ID, Ex_Date)
 );
 

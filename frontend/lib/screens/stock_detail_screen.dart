@@ -424,6 +424,9 @@ class _YieldHeader extends StatelessWidget {
             ],
           ),
         ),
+        // 計算口徑說明：殖利率與股利皆含股票股利（配股面額還原）
+        _caveat('殖利率／股利為股利合計（現金＋股票股利，配股按面額還原 =（配股比−1）×10）',
+            AppTheme.textSecondary),
         // 邊界提示
         if (stock.isUnder1Y)
           _caveat('上市未滿 1 年，資料極有限，僅供參考', AppTheme.alertRed)
@@ -810,9 +813,9 @@ class _DividendChart extends StatelessWidget {
     final spots = divs
         .asMap()
         .entries
-        .map((e) => FlSpot(e.key.toDouble(), e.value.amount))
+        .map((e) => FlSpot(e.key.toDouble(), e.value.total))
         .toList();
-    final maxAmt = divs.map((d) => d.amount).reduce((a, b) => a > b ? a : b);
+    final maxAmt = divs.map((d) => d.total).reduce((a, b) => a > b ? a : b);
     final maxY = maxAmt * 1.25;
 
     // 單點時左右各留一格，避免線圖貼邊
@@ -908,8 +911,12 @@ class _DividendChart extends StatelessWidget {
                 final dateLabel = pt != null
                     ? '${pt.date.year}/${pt.date.month.toString().padLeft(2, '0')}/${pt.date.day.toString().padLeft(2, '0')}\n'
                     : '';
+                // 有配股時拆解現金／配股，否則只顯示現金配息
+                final breakdown = (pt != null && pt.stock > 0)
+                    ? '現金 \$${pt.cash.toStringAsFixed(2)} ＋配股 \$${pt.stock.toStringAsFixed(2)}\n合計 \$${pt.total.toStringAsFixed(2)}'
+                    : '配息 \$${s.y.toStringAsFixed(2)}';
                 return LineTooltipItem(
-                  '$dateLabel配息 \$${s.y.toStringAsFixed(2)}',
+                  '$dateLabel$breakdown',
                   const TextStyle(
                       color: Colors.white,
                       fontSize: 12,

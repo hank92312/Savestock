@@ -18,13 +18,21 @@ class PricePoint {
 
 class DividendPoint {
   final DateTime date;
-  final double amount;
+  final double cash; // 現金股利
+  final double stock; // 股票股利（配股，面額還原成元）
+  final double total; // 現金 + 配股
 
-  const DividendPoint({required this.date, required this.amount});
+  const DividendPoint(
+      {required this.date,
+      required this.cash,
+      required this.stock,
+      required this.total});
 
   factory DividendPoint.fromJson(Map<String, dynamic> j) => DividendPoint(
         date: DateTime.parse(j['date'] as String),
-        amount: (j['amount'] as num).toDouble(),
+        cash: (j['cash'] as num?)?.toDouble() ?? 0,
+        stock: (j['stock'] as num?)?.toDouble() ?? 0,
+        total: (j['total'] as num?)?.toDouble() ?? 0,
       );
 }
 

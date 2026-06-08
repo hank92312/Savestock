@@ -77,7 +77,7 @@ Yahoo 財經 ──(yfinance)──> ETL 批次運算 ──> savestock.db
 | `Stock_Master` | `Stock_ID`, `Name`, `Sector`, `Avg_Dividend_2Y`, `Dividend_1Y`, `Default_Drop_Threshold`, **`Listing_Months`**, `Last_Updated`,（實際 DB 另有 `Is_Default`） |
 | `User_Stocks` | `User_ID`, `Stock_ID`, `Status`, `Is_Default`, `Custom_Drop_Threshold` |
 | `Daily_Prices` | `Stock_ID`, `Date`, `Close_Price`, `Volume`, `Alert_Flag`, `Alert_Reason` |
-| `Dividends` | `Stock_ID`, `Ex_Date`, `Amount`（現金股利歷史，供股利折線圖；`_fetch_and_upsert` 寫入） |
+| `Dividends` | `Stock_ID`, `Ex_Date`, `Cash_Dividend`, `Stock_Dividend`（現金＋股票股利歷史，供股利折線圖；`_fetch_and_upsert` 寫入） |
 | `User_Preferences` | `Push_Enabled`, `Email_Enabled`（推播/郵件，尚未接線） |
 
 > 免費方案自選上限＝**5 檔**（已統一：schema 種子、後端無授權 fallback、前端文案皆為 5）。
@@ -102,8 +102,13 @@ Yahoo 財經 ──(yfinance)──> ETL 批次運算 ──> savestock.db
 
 ## 4. 核心計算邏輯
 
+### 股利口徑（重要）
+* **股利＝現金股利＋股票股利（配股）**。台股配股記於 yfinance `actions` 的「Stock Splits」欄，配股 X 元對應配股比 (1+X/10)，故 **股票股利(元) =（配股比−1）×10**（面額還原；僅計配股 ratio>1，減資不計）。
+* 早期只計現金股利會嚴重低估含配股個股（如聯邦銀 2838：純現金殖利率 ~1.5% → 含配股 ~5%），已修正。
+* ⚠️ yfinance 偶有將單次配股拆成多列的資料瑕疵（如 2838 2024-07 重複），會略為高估近2年平均；近一年（主要指標）不受影響。
+
 ### 基準股利（年化平均）
-* **上市 ≥ 2 年**：近 2 年現金股利合計 ÷ 2（ETL 另計配股）。
+* **上市 ≥ 2 年**：近 2 年股利合計 ÷ 2。
 * **上市 < 2 年（`Listing_Months` < 24）**：上市迄今全部股利 ÷ 上市年數（年化）；前端標示「上市迄今平均」並提醒涵蓋約 X 個月。
 
 ### 殖利率
@@ -172,7 +177,8 @@ Yahoo 財經 ──(yfinance)──> ETL 批次運算 ──> savestock.db
 | 債券 ETF（00xxB）不支援 | Yahoo 無資料，顯示明確說明 |
 | 新上市 < 24 月股利年化 | 固定 ÷2 會低估新上市股 |
 | 清單顯示／排序改用近一年殖利率 | 反映最新配息水準；近2年平均保留於詳情頁作保守參考 |
-| 股利歷史存 DB（`Dividends` 表）而非每次即時抓 | 詳情頁股利圖讀 DB 快、與價格圖一致；`_fetch_and_upsert` 順手寫入 |
+| 殖利率／股利併計股票股利，配股按面額還原 | 只算現金會大幅低估含配股個股（聯邦銀等）；面額還原為台股配息表慣例、較保守，並於詳情頁加註說明 |
+| 股利歷史存 DB（`Dividends` 表，現金/配股分欄）而非每次即時抓 | 詳情頁股利圖讀 DB 快、與價格圖一致，tooltip 可拆解現金／配股；`_fetch_and_upsert` 順手寫入 |
 | 殖利率降序排序（清單與自選一致） | refresh 端點亦於回傳前排序 |
 | 刪除用「常駐按鈕＋左滑」 | 左滑為觸控手勢，web 滑鼠難觸發 |
 | 自訂 ScrollBehavior 加 mouse | 讓 web/桌機滑鼠可拖曳捲動/下拉 |
