@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../models/stock.dart';
 import '../services/api_service.dart';
+import '../services/user_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/sector_badge.dart';
 
@@ -18,6 +19,10 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
   String? _error;
   int _selectedDays = 30;
 
+  int? _userId;
+  bool? _inWatchlist; // null = 仍在確認中
+  bool _adding = false;
+
   static const _periods = [
     {'label': '30日', 'days': 30},
     {'label': '半年', 'days': 180},
@@ -28,6 +33,46 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
   void initState() {
     super.initState();
     _loadPrices();
+    _loadWatchlistStatus();
+  }
+
+  Future<void> _loadWatchlistStatus() async {
+    try {
+      final userId = await UserService.getOrCreateUserId();
+      final list = await ApiService.fetchWatchlist(userId);
+      if (!mounted) return;
+      final sid = widget.stock.stockId.toUpperCase();
+      setState(() {
+        _userId = userId;
+        _inWatchlist = list.any((s) => s.stockId.toUpperCase() == sid);
+      });
+    } catch (_) {
+      // 無法確認時隱藏按鈕，不阻塞詳情頁
+    }
+  }
+
+  Future<void> _addToWatchlist() async {
+    if (_userId == null || _adding) return;
+    setState(() => _adding = true);
+    final error = await ApiService.addToWatchlist(_userId!, widget.stock.stockId);
+    if (!mounted) return;
+    if (error != null) {
+      setState(() => _adding = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error), backgroundColor: AppTheme.alertRed),
+      );
+      return;
+    }
+    setState(() {
+      _adding = false;
+      _inWatchlist = true;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('已加入我的股票'),
+        backgroundColor: AppTheme.gainGreen,
+      ),
+    );
   }
 
   Future<void> _loadPrices() async {
@@ -57,6 +102,39 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(s.name),
+        actions: [
+          if (_inWatchlist == null)
+            const SizedBox(
+              width: 48,
+              child: Center(
+                child: SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+            )
+          else if (_inWatchlist!)
+            const Padding(
+              padding: EdgeInsets.only(right: 12),
+              child: Tooltip(
+                message: '已在我的股票',
+                child: Icon(Icons.bookmark_rounded, color: AppTheme.primary),
+              ),
+            )
+          else
+            IconButton(
+              icon: _adding
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.bookmark_add_outlined),
+              tooltip: '加入我的股票',
+              onPressed: _adding ? null : _addToWatchlist,
+            ),
+        ],
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1),
           child: Container(height: 1, color: AppTheme.divider),
