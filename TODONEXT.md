@@ -1,11 +1,44 @@
 # Savestock — 後續待辦事項 (TODONEXT)
 
-> 最後更新：2026-06-06（收工）
-> 目前進度：Phase 1–3 ✅ 主功能完成；P3 體驗優化 ✅ 清空；P4 後端補強 ✅；onboarding ✅。下一階段：**P5 部署**。
+> 最後更新：2026-06-08（收工）
+> 目前進度：Phase 1–3 ✅ 主功能完成；P3 體驗優化 ✅；P4 後端補強 ✅；onboarding ✅；近一年殖利率基準＋股利折線圖＋配股納入 ✅。下一階段：**股利圖改直條圖** → **P5 部署**。
 
 ---
 
-## ⭐ 下次開工優先：先做這些
+## ⭐ 下次開工最優先：股利圖改堆疊直條圖
+
+> 折線圖在「含配股年度」會多出一個低點（如 2883 凱基金 2025/8 配股 0.1），折線不直觀。
+> 改為**堆疊直條圖**（仿 Yahoo 股市「歷年股利分配」）：每根 bar = 該年現金股利 + 股票股利分色堆疊。
+
+- [ ] `stock_detail_screen.dart` 的 `_DividendChart` 由 `LineChart` 改為 `BarChart`（fl_chart 已有 `BarChart`/`BarChartGroupData`/`BarChartRodData` + `rodStackItems` 可做堆疊）
+  - 淺藍＝現金股利、深紫＝股票股利（配股面額還原），圖例兩色（沿用現有 `DividendPoint.cash`/`stock`/`total`）
+  - tooltip 顯示「現金 X ＋ 股票 Y ＝ 合計 Z」，沿用現有拆解邏輯
+  - 半年／1年／2年 期間切換沿用現有 `_PeriodChips`
+  - X 軸用「除權息日 YYYY/MM」或年度標籤
+- [ ] 確認資料正確性已驗證：2883 凱基金 2025 = 現金 0.85 ＋ 股票 0.1（與 Yahoo 一致，非 bug，配股 ratio 1.01 → (1.01−1)×10=0.1 元）
+- 注意：`DividendPoint` 模型、`/stocks/{id}/dividends` 端點皆已回傳 cash/stock/total，**後端不需改**，只動前端圖表元件。
+
+---
+
+## ✅ 今日完成項目（2026-06-08）
+
+- [x] **詳情頁加入「加入我的股票」鈕**：AppBar 智慧書籤鈕（未追蹤→加入圖示、已追蹤→實心書籤、載入中→spinner）
+- [x] **跨頁同步修正**：新增 `WatchlistNotifier` 單例（ChangeNotifier）；任何地方加股後 `markDirty()`，My Stocks 監聽並輕量 `_loadList()` 重抓，免按網頁重新整理才出現
+- [x] **本機 user 升 Premium（上限 20）**：DB 全 user 改 Premium_Tier_1=20
+- [x] **股票名稱中文修正**：`_resolve_chinese_name` 優先用 TWSE 批次快取（可靠）再退即時 mis API；既有英文名下次 refresh 自動升級
+- [x] **價格顯示到小數第 2 位**：卡片/詳情 `toStringAsFixed(1)`→`(2)`
+- [x] **近一年殖利率為主基準**：卡片/清單主顯示改 `Dividend_1Y`/`yield1y`；詳情頁並列近1年＋近2年平均；不滿1年顯示「近X月股利」並標註
+- [x] **股利折線圖**：價格圖下方新增股利圖（半年/1年/2年切換）— *下次將改為直條圖（見上）*
+- [x] **配股（股票股利）納入殖利率**：yfinance `Stock Splits` 欄＝配股，面額還原 (ratio−1)×10；`_total_div_series()` 合併現金＋配股；`Dividends` 表改 `Cash_Dividend`/`Stock_Dividend` 分欄；端點回傳 cash/stock/total；已重算全部 26 檔（2838 聯邦銀殖利率 ~1.5%→5.06%）
+  - 標註：詳情頁 `_YieldHeader` 加方法說明（配股按面額還原）
+  - 已知限制：yfinance 偶把單次配股拆成多列（2838 2024-07），略灌水**近2年平均**；近1年（主指標）正確。已記入 APP.md。
+- [x] **start.bat / stop.bat / .gitignore**：一鍵啟動/停止；DB 已 gitignore
+
+> ⚠️ 部署提醒：股利資料只在本地 `savestock.db`（gitignore）。新環境需跑 ETL 或對各股呼叫 refresh 端點回填 `Dividends` 表並重算彙總值。
+
+---
+
+## ⭐ 下次開工優先（既有）：先做這些
 
 ### 1. 待驗收（本次實作完成，尚未在畫面確認）
 > 下次開工先開瀏覽器逐項確認；若有不符再修，確認 OK 就刪掉本區塊。
