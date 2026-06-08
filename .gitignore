@@ -32,3 +32,6 @@ Thumbs.db
 .env
 *.db
 .claude/
+
+# Local launcher logs
+logs/
