@@ -52,6 +52,21 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  /// 點警示徽章 → 在同頁以底部彈窗列出目前所有警示股票
+  void _showAlerts() {
+    final alerts = _stocks.where((s) => s.alertFlag).toList();
+    if (alerts.isEmpty) return;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => _AlertSheet(stocks: alerts),
+    );
+  }
+
   List<String> get _sectors {
     final seen = <String>{'全部'};
     final result = ['全部'];
@@ -80,8 +95,8 @@ class _HomeScreenState extends State<HomeScreen> {
         actions: [
           if (_alertCount > 0)
             Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: _AlertChip(count: _alertCount),
+              padding: const EdgeInsets.only(right: 4),
+              child: _AlertChip(count: _alertCount, onTap: _showAlerts),
             ),
           IconButton(
             icon: const Icon(Icons.search_rounded),
@@ -90,10 +105,15 @@ class _HomeScreenState extends State<HomeScreen> {
               MaterialPageRoute(builder: (_) => const AddStockScreen()),
             ),
           ),
-          IconButton(
-            icon: const Icon(Icons.refresh_rounded),
-            tooltip: '即時更新股價',
+          // 用「圖示+文字」按鈕，手機無 hover tooltip 也看得懂功能
+          TextButton.icon(
             onPressed: () => _loadStocks(live: true),
+            icon: const Icon(Icons.refresh_rounded, size: 20),
+            label: const Text('更新'),
+            style: TextButton.styleFrom(
+              foregroundColor: AppTheme.primary,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+            ),
           ),
           IconButton(
             icon: const Icon(Icons.help_outline_rounded),
@@ -268,31 +288,99 @@ class _GridList extends StatelessWidget {
 
 class _AlertChip extends StatelessWidget {
   final int count;
-  const _AlertChip({required this.count});
+  final VoidCallback onTap;
+  const _AlertChip({required this.count, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: AppTheme.alertRed.withOpacity(0.1),
+    return Material(
+      color: AppTheme.alertRed.withOpacity(0.1),
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
+        onTap: onTap,
         borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.warning_rounded,
-              color: AppTheme.alertRed, size: 16),
-          const SizedBox(width: 4),
-          Text(
-            '$count 筆警示',
-            style: const TextStyle(
-              color: AppTheme.alertRed,
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-            ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.warning_rounded,
+                  color: AppTheme.alertRed, size: 16),
+              const SizedBox(width: 4),
+              Text(
+                '$count 筆警示',
+                style: const TextStyle(
+                  color: AppTheme.alertRed,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const Icon(Icons.keyboard_arrow_down_rounded,
+                  color: AppTheme.alertRed, size: 16),
+            ],
           ),
-        ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── 警示清單底部彈窗 ───────────────────────────────────────────
+
+class _AlertSheet extends StatelessWidget {
+  final List<Stock> stocks;
+  const _AlertSheet({required this.stocks});
+
+  @override
+  Widget build(BuildContext context) {
+    final maxH = MediaQuery.of(context).size.height * 0.75;
+    return SafeArea(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: maxH),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AppTheme.divider,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  const Icon(Icons.warning_rounded,
+                      color: AppTheme.alertRed, size: 20),
+                  const SizedBox(width: 8),
+                  Text(
+                    '今日警示（${stocks.length}）',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.textPrimary,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Flexible(
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: stocks.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 12),
+                  itemBuilder: (_, i) => StockCard(stock: stocks[i]),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
