@@ -1,6 +1,6 @@
 # 專案架構文件：Savestock（長線存股防護系統）
 
-> 最後更新：2026-06-06
+> 最後更新：2026-06-08
 > 本文件為專案的單一入口參考：看完即可掌握整體內容與架構。
 > 細部待辦與部署決策見 [TODONEXT.md](TODONEXT.md)。
 
@@ -73,7 +73,7 @@ Yahoo 財經 ──(yfinance)──> ETL 批次運算 ──> savestock.db
 | `Plan_Configs` | `Tier_ID`, `Tier_Name`, `Max_Total_Stocks` |
 | `Users` | `User_ID`, `Email`, `OAuth_Provider`, `UUID` |
 | `User_Licenses` | `User_ID`, `Tier_ID`, `Purchase_Date` |
-| `Stock_Master` | `Stock_ID`, `Name`, `Sector`, `Avg_Dividend_2Y`, `Default_Drop_Threshold`, **`Listing_Months`**, `Last_Updated`,（實際 DB 另有 `Is_Default`） |
+| `Stock_Master` | `Stock_ID`, `Name`, `Sector`, `Avg_Dividend_2Y`, `Dividend_1Y`, `Default_Drop_Threshold`, **`Listing_Months`**, `Last_Updated`,（實際 DB 另有 `Is_Default`） |
 | `User_Stocks` | `User_ID`, `Stock_ID`, `Status`, `Is_Default`, `Custom_Drop_Threshold` |
 | `Daily_Prices` | `Stock_ID`, `Date`, `Close_Price`, `Volume`, `Alert_Flag`, `Alert_Reason` |
 | `User_Preferences` | `Push_Enabled`, `Email_Enabled`（推播/郵件，尚未接線） |
@@ -87,9 +87,10 @@ Yahoo 財經 ──(yfinance)──> ETL 批次運算 ──> savestock.db
 | `screens/onboarding_screen.dart` | **教學導覽**（首次自動顯示、❓可重看；殖利率→用法→警示→免責） |
 | `screens/app_shell.dart` | 底部導覽（預設清單／我的股票）＋首次啟動導覽判斷 |
 | `screens/home_screen.dart` | 預設清單、產業篩選 Chip、響應式佈局、下拉刷新、❓教學入口 |
-| `screens/my_stocks_screen.dart` | 自選清單、開啟即時刷新、刪除鈕（＋左滑刪除） |
+| `screens/my_stocks_screen.dart` | 自選清單、開啟即時刷新、刪除鈕（＋左滑刪除）、外部加入即時同步 |
 | `screens/add_stock_screen.dart` | 模糊搜尋＋候選清單＋無結果直接查詢＋已追蹤標記 |
-| `screens/stock_detail_screen.dart` | 殖利率大字、數據卡（含新上市提示）、折線圖（tooltip 顯示日期）、警示卡 |
+| `screens/stock_detail_screen.dart` | 殖利率大字、數據卡（含新上市提示）、AppBar「加入我的股票」書籤鈕、折線圖（tooltip 顯示日期）、警示卡 |
+| `services/watchlist_notifier.dart` | 加入自選後跨畫面即時通知「我的股票」重抓清單（singleton ChangeNotifier） |
 | `widgets/stock_card.dart`, `widgets/sector_badge.dart` | 共用股票卡、產業標籤 |
 | `services/api_service.dart`, `services/user_service.dart` | API 呼叫層、UUID 與 user_id 本地管理 |
 | `models/stock.dart` | `Stock`（含 `listingMonths` / `isNewListing`） |
@@ -139,6 +140,7 @@ Yahoo 財經 ──(yfinance)──> ETL 批次運算 ──> savestock.db
 * 後端 12 支端點（搜尋/lookup/prices/自選 CRUD/refresh，清單與自選皆殖利率排序）。
 * Flutter 全畫面：首頁、我的股票、查詢、詳情、**教學導覽**。
 * 體驗優化（P3）：下拉刷新、已追蹤標記、上限友善提示、滑鼠拖曳、圖表日期、刪除鈕。
+* 詳情頁「加入我的股票」書籤鈕＋跨畫面即時同步；股票名稱統一中文（搜尋快取優先）；股價顯示至小數點 2 位。
 
 ### ⏳ 待辦
 * **P5 生產上線**：見第 7 節與 TODONEXT。
@@ -161,7 +163,7 @@ Yahoo 財經 ──(yfinance)──> ETL 批次運算 ──> savestock.db
 | 決策 | 原因 |
 | --- | --- |
 | 預設股 `Is_Default=1`、自選股 `Is_Default=0` | 避免 lookup 新增股混入預設清單 |
-| 自選股中文名從 TWSE openapi 抓 | yfinance 台股名稱為英文 |
+| 股票中文名優先取 TWSE 搜尋快取（批次、穩定），次為即時 mis API，最後才 yfinance 英文 | 即時 mis API 偶爾失敗會退回英文名並寫入 DB；既有英文名於下次更新自動升級為中文 |
 | 我的股票開啟即 `refresh` | 顯示即時資料而非 DB 快照 |
 | 搜尋快取用 STOCK_DAY_ALL | 涵蓋 ETF；上櫃不在範圍 |
 | 債券 ETF（00xxB）不支援 | Yahoo 無資料，顯示明確說明 |
