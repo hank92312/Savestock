@@ -105,15 +105,19 @@ _LATEST_PRICE_JOIN = """
 def _row_to_dict(row):
     close = row.Close_Price
     avg_div = row.Avg_Dividend_2Y
+    div_1y = row.Dividend_1Y
     yield_est = round(avg_div / close * 100, 2) if close and avg_div else None
+    yield_1y = round(div_1y / close * 100, 2) if close and div_1y else None
     return {
         "stock_id": row.Stock_ID,
         "name": row.Name,
         "sector": row.Sector,
         "avg_dividend_2y": avg_div,
+        "dividend_1y": div_1y,
         "listing_months": row.Listing_Months,
         "close_price": close,
         "estimated_yield": yield_est,
+        "yield_1y": yield_1y,
         "alert_flag": bool(row.Alert_Flag),
         "alert_reason": row.Alert_Reason,
         "last_date": str(row.Date) if row.Date else None,
@@ -151,6 +155,17 @@ def _avg_dividend(actions, listing_months: int | None) -> float:
     return float(recent["Dividends"].sum()) / 2
 
 
+def _dividend_1y(actions) -> float:
+    """近 12 個月現金股利合計（近一年殖利率用）。"""
+    if actions.empty or "Dividends" not in actions.columns:
+        return 0.0
+    one_year_ago = datetime.now() - timedelta(days=365)
+    if actions.index.tzinfo:
+        one_year_ago = one_year_ago.replace(tzinfo=actions.index.tzinfo)
+    recent = actions[actions.index > one_year_ago]
+    return float(recent["Dividends"].sum())
+
+
 def _fetch_and_upsert(sid: str, conn) -> dict | None:
     """從 yfinance 抓取最新資料並寫入 DB，回傳股票 dict 或 None（查無此股）。"""
     ticker = yf.Ticker(sid)
@@ -177,9 +192,10 @@ def _fetch_and_upsert(sid: str, conn) -> dict | None:
         code_only = sid.replace(".TWO", "").replace(".TW", "")
         name = _get_tw_chinese_name(code_only) or en_name
 
-    # 計算平均股利（上市不滿2年改用上市迄今年化）
+    # 計算平均股利（上市不滿2年改用上市迄今年化）+ 近一年股利
     listing_months = _listing_months(info)
     avg_div = _avg_dividend(ticker.actions, listing_months)
+    div_1y = _dividend_1y(ticker.actions)
 
     latest = hist.iloc[-1]
     prev = hist.iloc[-2] if len(hist) > 1 else latest
@@ -200,14 +216,15 @@ def _fetch_and_upsert(sid: str, conn) -> dict | None:
     alert_reason = ", ".join(alert_reasons)
 
     conn.execute(text("""
-        INSERT INTO Stock_Master (Stock_ID, Name, Sector, Avg_Dividend_2Y, Listing_Months, Is_Default, Last_Updated)
-        VALUES (:sid, :name, :sector, :avg_div, :listing_months, 0, CURRENT_TIMESTAMP)
+        INSERT INTO Stock_Master (Stock_ID, Name, Sector, Avg_Dividend_2Y, Dividend_1Y, Listing_Months, Is_Default, Last_Updated)
+        VALUES (:sid, :name, :sector, :avg_div, :div_1y, :listing_months, 0, CURRENT_TIMESTAMP)
         ON CONFLICT (Stock_ID) DO UPDATE SET
             Avg_Dividend_2Y = EXCLUDED.Avg_Dividend_2Y,
+            Dividend_1Y = EXCLUDED.Dividend_1Y,
             Listing_Months = EXCLUDED.Listing_Months,
             Last_Updated = CURRENT_TIMESTAMP
     """), {"sid": sid, "name": name, "sector": sector, "avg_div": avg_div,
-           "listing_months": listing_months})
+           "div_1y": div_1y, "listing_months": listing_months})
 
     # 最新一筆：UPSERT（確保今日警示最新）
     conn.execute(text("""
@@ -234,14 +251,17 @@ def _fetch_and_upsert(sid: str, conn) -> dict | None:
             pass
 
     yield_est = round(avg_div / close * 100, 2) if close and avg_div else None
+    yield_1y = round(div_1y / close * 100, 2) if close and div_1y else None
     return {
         "stock_id": sid,
         "name": name,
         "sector": sector,
         "avg_dividend_2y": avg_div,
+        "dividend_1y": div_1y,
         "listing_months": listing_months,
         "close_price": close,
         "estimated_yield": yield_est,
+        "yield_1y": yield_1y,
         "alert_flag": alert_flag,
         "alert_reason": alert_reason,
         "last_date": str(today),
@@ -253,7 +273,7 @@ def _fetch_and_upsert(sid: str, conn) -> dict | None:
 @router.get("/")
 def get_default_stocks(conn=Depends(get_db)):
     rows = conn.execute(text(f"""
-        SELECT sm.Stock_ID, sm.Name, sm.Sector, sm.Avg_Dividend_2Y, sm.Listing_Months,
+        SELECT sm.Stock_ID, sm.Name, sm.Sector, sm.Avg_Dividend_2Y, sm.Dividend_1Y, sm.Listing_Months,
                dp.Close_Price, dp.Alert_Flag, dp.Alert_Reason, dp.Date
         FROM Stock_Master sm
         {_LATEST_PRICE_JOIN}
@@ -348,7 +368,7 @@ def lookup_stock(stock_id: str, conn=Depends(get_db)):
 @router.get("/{stock_id}")
 def get_stock(stock_id: str, conn=Depends(get_db)):
     row = conn.execute(text(f"""
-        SELECT sm.Stock_ID, sm.Name, sm.Sector, sm.Avg_Dividend_2Y, sm.Listing_Months,
+        SELECT sm.Stock_ID, sm.Name, sm.Sector, sm.Avg_Dividend_2Y, sm.Dividend_1Y, sm.Listing_Months,
                dp.Close_Price, dp.Alert_Flag, dp.Alert_Reason, dp.Date
         FROM Stock_Master sm
         {_LATEST_PRICE_JOIN}

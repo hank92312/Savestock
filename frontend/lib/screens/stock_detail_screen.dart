@@ -100,8 +100,8 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
 
             const SizedBox(height: 24),
 
-            // ── 殖利率大字 ──────────────────────────────────
-            _YieldHero(yield_: s.estimatedYield),
+            // ── 殖利率（近一年 + 2年平均並列）──────────────
+            _YieldHeader(stock: s),
 
             const SizedBox(height: 20),
 
@@ -174,52 +174,120 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
   }
 }
 
-// ── 殖利率大字 ────────────────────────────────────────────────
+// ── 殖利率（近一年 + 2年平均並列）────────────────────────────
 
-class _YieldHero extends StatelessWidget {
-  final double? yield_;
-  const _YieldHero({this.yield_});
+Color _yieldColor(double? y) {
+  if (y == null) return AppTheme.textSecondary;
+  if (y >= 6) return AppTheme.gainGreen;
+  if (y >= 4) return const Color(0xFF1565C0);
+  return AppTheme.textPrimary;
+}
+
+class _YieldHeader extends StatelessWidget {
+  final Stock stock;
+  const _YieldHeader({required this.stock});
+
+  /// 指標②（基準）的標籤，依上市時間調整，不沿用誤導名稱
+  String get _baselineLabel {
+    final m = stock.listingMonths;
+    if (m == null || m >= 24) return '2年平均殖利率';
+    if (m >= 12) return '上市以來年化';
+    return '上市以來年化（涵蓋 $m 月）';
+  }
 
   @override
   Widget build(BuildContext context) {
-    final hasValue = yield_ != null;
-    final color = _yieldColor(yield_);
+    final hasBaseline = stock.estimatedYield != null;
+    final hasOneYear = stock.yield1y != null;
 
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 24),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.06),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: color.withOpacity(0.2)),
-      ),
-      child: Column(
-        children: [
-          Text(
-            hasValue ? '${yield_!.toStringAsFixed(2)}%' : '--',
-            style: TextStyle(
-              fontSize: 48,
-              fontWeight: FontWeight.w900,
-              color: color,
-              letterSpacing: -1,
-            ),
+    // 完全無配息紀錄
+    if (!hasBaseline && !hasOneYear) {
+      return _card(
+        child: const Center(
+          child: Padding(
+            padding: EdgeInsets.symmetric(vertical: 8),
+            child: Text('尚無配息紀錄',
+                style: TextStyle(fontSize: 16, color: AppTheme.textSecondary)),
           ),
-          const SizedBox(height: 4),
-          const Text(
-            '估算殖利率',
-            style: TextStyle(fontSize: 14, color: AppTheme.textSecondary),
+        ),
+      );
+    }
+
+    final blocks = <Widget>[
+      // 上市滿 1 年才顯示「近一年殖利率」
+      if (!stock.isUnder1Y) _yieldBlock('近一年殖利率', stock.yield1y),
+      _yieldBlock(_baselineLabel, stock.estimatedYield),
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _card(
+          child: Row(
+            children: [
+              for (var i = 0; i < blocks.length; i++) ...[
+                if (i > 0)
+                  Container(width: 1, height: 52, color: AppTheme.divider),
+                Expanded(child: blocks[i]),
+              ],
+            ],
           ),
-        ],
-      ),
+        ),
+        // 邊界提示
+        if (stock.isUnder1Y)
+          _caveat('上市未滿 1 年，資料極有限，僅供參考', AppTheme.alertRed)
+        else if (stock.isNewListing)
+          _caveat('上市未滿 2 年，殖利率為上市迄今年化估算', AppTheme.textSecondary),
+      ],
     );
   }
 
-  Color _yieldColor(double? y) {
-    if (y == null) return AppTheme.textSecondary;
-    if (y >= 6) return AppTheme.gainGreen;
-    if (y >= 4) return const Color(0xFF1565C0);
-    return AppTheme.textPrimary;
+  Widget _card({required Widget child}) => Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppTheme.divider),
+        ),
+        child: child,
+      );
+
+  Widget _yieldBlock(String label, double? y) {
+    final color = _yieldColor(y);
+    return Column(
+      children: [
+        Text(
+          y != null ? '${y.toStringAsFixed(2)}%' : '—',
+          style: TextStyle(
+            fontSize: 38,
+            fontWeight: FontWeight.w900,
+            color: color,
+            letterSpacing: -1,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(label,
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary)),
+      ],
+    );
   }
+
+  Widget _caveat(String text, Color color) => Padding(
+        padding: const EdgeInsets.only(top: 8, left: 4),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.info_outline_rounded, size: 14, color: color),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(text,
+                  style: TextStyle(fontSize: 12, color: color, height: 1.4)),
+            ),
+          ],
+        ),
+      );
 }
 
 // ── 數據卡片 ──────────────────────────────────────────────────
@@ -231,60 +299,35 @@ class _MetricsCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isNew = stock.isNewListing;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: AppTheme.divider),
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.divider),
+      ),
+      child: Row(
+        children: [
+          _Stat(
+            label: '最新收盤價',
+            value: stock.closePrice != null
+                ? '\$${stock.closePrice!.toStringAsFixed(1)}'
+                : '--',
           ),
-          child: Row(
-            children: [
-              _Stat(
-                label: '最新收盤價',
-                value: stock.closePrice != null
-                    ? '\$${stock.closePrice!.toStringAsFixed(1)}'
-                    : '--',
-              ),
-              _Divider(),
-              _Stat(
-                label: isNew ? '上市迄今平均股利' : '近2年平均股利',
-                value: stock.avgDividend2y != null
-                    ? '\$${stock.avgDividend2y!.toStringAsFixed(2)}'
-                    : '--',
-              ),
-              _Divider(),
-              _Stat(
-                label: '資料日期',
-                value: stock.lastDate ?? '--',
-              ),
-            ],
+          _Divider(),
+          _Stat(
+            label: isNew ? '上市迄今平均股利' : '近2年平均股利',
+            value: stock.avgDividend2y != null
+                ? '\$${stock.avgDividend2y!.toStringAsFixed(2)}'
+                : '--',
           ),
-        ),
-        if (isNew) ...[
-          const SizedBox(height: 8),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Icon(Icons.info_outline_rounded,
-                  size: 14, color: AppTheme.textSecondary),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  '此股上市未滿 2 年，股利為上市迄今約 ${stock.listingMonths} 個月資料年化估算，僅供參考',
-                  style: const TextStyle(
-                      fontSize: 12,
-                      color: AppTheme.textSecondary,
-                      height: 1.4),
-                ),
-              ),
-            ],
+          _Divider(),
+          _Stat(
+            label: '資料日期',
+            value: stock.lastDate ?? '--',
           ),
         ],
-      ],
+      ),
     );
   }
 }

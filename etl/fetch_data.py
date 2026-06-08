@@ -100,7 +100,17 @@ def fetch_stock_data(stock_id: str, name: str, sector: str):
             avg_stock = total_stock_div / divisor
 
     combined_dividend = avg_cash + avg_stock
-    
+
+    # 近 12 個月現金股利合計（近一年殖利率用）
+    dividend_1y = 0
+    if not actions.empty and 'Dividends' in actions.columns:
+        one_year_ago = datetime.now() - timedelta(days=365)
+        if actions.index.tzinfo:
+            one_year_ago = one_year_ago.replace(tzinfo=actions.index.tzinfo)
+        else:
+            one_year_ago = one_year_ago.replace(tzinfo=None)
+        dividend_1y = float(actions[actions.index > one_year_ago]['Dividends'].sum())
+
     # 3. 獲取最新資料
     latest_day = hist.iloc[-1]
     prev_day = hist.iloc[-2] if len(hist) > 1 else latest_day
@@ -138,6 +148,7 @@ def fetch_stock_data(stock_id: str, name: str, sector: str):
         "name":           name,
         "sector":         sector,
         "avg_dividend_2y": combined_dividend,
+        "dividend_1y": dividend_1y,
         "listing_months": listing_months,
         "drop_threshold": SECTOR_THRESHOLDS.get(sector, 0.04),  # 小數格式
         "price_rows":     price_rows,
@@ -150,12 +161,13 @@ def save_to_db(data):
     with engine.begin() as conn:
         # 1. 更新 Stock_Master
         upsert_stock_master = text("""
-            INSERT INTO Stock_Master (Stock_ID, Name, Sector, Avg_Dividend_2Y, Default_Drop_Threshold, Listing_Months, Is_Default, Last_Updated)
-            VALUES (:sid, :name, :sector, :avg_div, :drop_threshold, :listing_months, 1, CURRENT_TIMESTAMP)
+            INSERT INTO Stock_Master (Stock_ID, Name, Sector, Avg_Dividend_2Y, Dividend_1Y, Default_Drop_Threshold, Listing_Months, Is_Default, Last_Updated)
+            VALUES (:sid, :name, :sector, :avg_div, :div_1y, :drop_threshold, :listing_months, 1, CURRENT_TIMESTAMP)
             ON CONFLICT (Stock_ID) DO UPDATE SET
                 Name = EXCLUDED.Name,
                 Sector = EXCLUDED.Sector,
                 Avg_Dividend_2Y = EXCLUDED.Avg_Dividend_2Y,
+                Dividend_1Y = EXCLUDED.Dividend_1Y,
                 Default_Drop_Threshold = EXCLUDED.Default_Drop_Threshold,
                 Listing_Months = EXCLUDED.Listing_Months,
                 Is_Default = 1,
@@ -166,6 +178,7 @@ def save_to_db(data):
             "name": data['name'],
             "sector": data['sector'],
             "avg_div": data['avg_dividend_2y'],
+            "div_1y": data['dividend_1y'],
             "drop_threshold": data['drop_threshold'],
             "listing_months": data['listing_months']
         })
