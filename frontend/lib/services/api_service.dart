@@ -40,6 +40,14 @@ class ApiService {
     return data.map((e) => Stock.fromJson(e as Map<String, dynamic>)).toList();
   }
 
+  /// 即時從網路更新所有預設股（較慢，供「更新」按鈕/下拉刷新使用）
+  static Future<List<Stock>> refreshDefaultStocks() async {
+    final res = await http.post(Uri.parse('$_base/stocks/refresh'));
+    if (res.statusCode != 200) throw Exception('更新失敗 (${res.statusCode})');
+    final List data = jsonDecode(utf8.decode(res.bodyBytes)) as List;
+    return data.map((e) => Stock.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
   static Future<Stock?> fetchStock(String stockId) async {
     final res = await http.get(Uri.parse('$_base/stocks/$stockId'));
     if (res.statusCode == 404) return null;

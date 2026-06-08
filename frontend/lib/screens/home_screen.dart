@@ -25,20 +25,28 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadStocks();
   }
 
-  Future<void> _loadStocks() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+  /// [live] = true 時即時從 yfinance 抓最新價格（較慢，按鈕/下拉用）；
+  /// false 為讀 DB 快照（開啟時快速載入）。
+  /// [showSpinner] = false 時不切換整頁載入畫面（給下拉刷新用，避免清單閃爍）。
+  Future<void> _loadStocks({bool live = false, bool showSpinner = true}) async {
+    if (showSpinner) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
     try {
-      final stocks = await ApiService.fetchDefaultStocks();
+      final stocks = live
+          ? await ApiService.refreshDefaultStocks()
+          : await ApiService.fetchDefaultStocks();
       setState(() {
         _stocks = stocks;
         _loading = false;
+        _error = null;
       });
     } catch (e) {
       setState(() {
-        _error = '無法載入資料，請確認網路連線';
+        _error = live ? '即時更新失敗，請稍後再試' : '無法載入資料，請確認網路連線';
         _loading = false;
       });
     }
@@ -84,8 +92,8 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
-            tooltip: '更新資料',
-            onPressed: _loadStocks,
+            tooltip: '即時更新股價',
+            onPressed: () => _loadStocks(live: true),
           ),
           IconButton(
             icon: const Icon(Icons.help_outline_rounded),
@@ -110,7 +118,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   selectedSector: _selectedSector,
                   onSectorChanged: (s) =>
                       setState(() => _selectedSector = s),
-                  onRefresh: _loadStocks,
+                  onRefresh: () => _loadStocks(live: true, showSpinner: false),
                   isTablet: isTablet,
                   isLandscapeTablet: isLandscapeTablet,
                 ),

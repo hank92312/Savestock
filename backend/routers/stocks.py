@@ -178,9 +178,9 @@ def _fetch_and_upsert(sid: str, conn) -> dict | None:
     info = ticker.info
     en_name = info.get("shortName") or info.get("longName") or sid
 
-    # 讀取已存在資料（保留原有中文名稱與 sector）
+    # 讀取已存在資料（保留原有中文名稱、sector 與產業跌幅閾值）
     existing = conn.execute(
-        text("SELECT Name, Sector FROM Stock_Master WHERE Stock_ID = :sid"),
+        text("SELECT Name, Sector, Default_Drop_Threshold FROM Stock_Master WHERE Stock_ID = :sid"),
         {"sid": sid},
     ).fetchone()
     sector = existing.Sector if existing else "Unknown"
@@ -208,7 +208,10 @@ def _fetch_and_upsert(sid: str, conn) -> dict | None:
     avg_vol_20d = hist["Volume"].tail(20).mean()
     vol_ratio = volume / avg_vol_20d if avg_vol_20d > 0 else 1
     alert_reasons = []
-    if price_change <= -3.0:           # 自選股統一用 3% 跌幅警示
+    # 預設股用其產業別閾值（已存於 Default_Drop_Threshold）；無紀錄者預設 3%
+    drop_pct = (existing.Default_Drop_Threshold
+                if existing and existing.Default_Drop_Threshold else 0.03) * 100
+    if price_change <= -drop_pct:
         alert_reasons.append(f"跌幅:{price_change:.2f}%")
     if vol_ratio >= 2.5:
         alert_reasons.append(f"爆量:{vol_ratio:.2f}倍")
@@ -284,6 +287,24 @@ def get_default_stocks(conn=Depends(get_db)):
                  ELSE 0 END DESC
     """)).fetchall()
     return [_row_to_dict(r) for r in rows]
+
+
+@router.post("/refresh")
+def refresh_default_stocks(conn=Depends(get_db)):
+    """即時從 yfinance 更新所有預設股的最新價格/警示並回傳（依殖利率降序）。"""
+    rows = conn.execute(
+        text("SELECT Stock_ID FROM Stock_Master WHERE Is_Default = 1")
+    ).fetchall()
+    results = []
+    for r in rows:
+        try:
+            data = _fetch_and_upsert(r.Stock_ID, conn)
+            if data:
+                results.append(data)
+        except Exception:
+            pass  # 單檔失敗不影響其餘
+    results.sort(key=lambda d: d.get("estimated_yield") or -1, reverse=True)
+    return results
 
 
 @router.get("/search")
