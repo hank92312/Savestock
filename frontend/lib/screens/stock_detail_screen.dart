@@ -3,6 +3,7 @@ import 'package:fl_chart/fl_chart.dart';
 import '../models/stock.dart';
 import '../services/api_service.dart';
 import '../services/user_service.dart';
+import '../services/watchlist_notifier.dart';
 import '../theme/app_theme.dart';
 import '../widgets/sector_badge.dart';
 
@@ -67,6 +68,7 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
       _adding = false;
       _inWatchlist = true;
     });
+    WatchlistNotifier.instance.markDirty();
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('已加入我的股票'),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/stock.dart';
 import '../services/api_service.dart';
 import '../services/user_service.dart';
+import '../services/watchlist_notifier.dart';
 import '../theme/app_theme.dart';
 import '../widgets/stock_card.dart';
 import 'add_stock_screen.dart';
@@ -23,6 +24,26 @@ class _MyStocksScreenState extends State<MyStocksScreen> {
   void initState() {
     super.initState();
     _init();
+    WatchlistNotifier.instance.addListener(_onExternalChange);
+  }
+
+  @override
+  void dispose() {
+    WatchlistNotifier.instance.removeListener(_onExternalChange);
+    super.dispose();
+  }
+
+  /// 外部加入自選股時（HomeScreen 詳情頁 / 搜尋頁），
+  /// 僅做輕量讀取（不跑 yfinance），更新清單。
+  void _onExternalChange() => _loadList();
+
+  Future<void> _loadList() async {
+    if (_userId == null) return;
+    try {
+      final stocks = await ApiService.fetchWatchlist(_userId!);
+      if (!mounted) return;
+      setState(() => _stocks = stocks);
+    } catch (_) {}
   }
 
   Future<void> _init() async {

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/stock.dart';
 import '../services/api_service.dart';
 import '../services/user_service.dart';
+import '../services/watchlist_notifier.dart';
 import '../theme/app_theme.dart';
 import '../widgets/stock_card.dart';
 
@@ -159,6 +160,7 @@ class _AddStockScreenState extends State<AddStockScreen> {
         _adding = false;
         _watchlistIds.add(_normalizeId(_result!.stockId));
       });
+      WatchlistNotifier.instance.markDirty();
     } catch (_) {
       if (!mounted) return;
       setState(() {
