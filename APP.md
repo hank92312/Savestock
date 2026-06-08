@@ -58,6 +58,7 @@ Yahoo 財經 ──(yfinance)──> ETL 批次運算 ──> savestock.db
 | GET | `/stocks/lookup/{id}` | 即時查任意台股（代號或中文名）；自動判斷 `.TW/.TWO`，抓取並寫入 DB |
 | GET | `/stocks/{id}` | 單一股票（DB 快照） |
 | GET | `/stocks/{id}/prices?days=` | 歷史收盤價（1–365 日） |
+| GET | `/stocks/{id}/dividends?months=` | 現金股利發放紀錄（6/12/24 月，供股利折線圖） |
 | POST | `/users/` | 以 UUID 建立用戶 |
 | GET | `/users/{uid}/watchlist` | 自選清單（DB，依殖利率降序） |
 | POST | `/users/{uid}/watchlist` | 加入自選（檢查方案上限，超過回 403） |
@@ -76,6 +77,7 @@ Yahoo 財經 ──(yfinance)──> ETL 批次運算 ──> savestock.db
 | `Stock_Master` | `Stock_ID`, `Name`, `Sector`, `Avg_Dividend_2Y`, `Dividend_1Y`, `Default_Drop_Threshold`, **`Listing_Months`**, `Last_Updated`,（實際 DB 另有 `Is_Default`） |
 | `User_Stocks` | `User_ID`, `Stock_ID`, `Status`, `Is_Default`, `Custom_Drop_Threshold` |
 | `Daily_Prices` | `Stock_ID`, `Date`, `Close_Price`, `Volume`, `Alert_Flag`, `Alert_Reason` |
+| `Dividends` | `Stock_ID`, `Ex_Date`, `Amount`（現金股利歷史，供股利折線圖；`_fetch_and_upsert` 寫入） |
 | `User_Preferences` | `Push_Enabled`, `Email_Enabled`（推播/郵件，尚未接線） |
 
 > 免費方案自選上限＝**5 檔**（已統一：schema 種子、後端無授權 fallback、前端文案皆為 5）。
@@ -89,7 +91,7 @@ Yahoo 財經 ──(yfinance)──> ETL 批次運算 ──> savestock.db
 | `screens/home_screen.dart` | 預設清單、產業篩選 Chip、響應式佈局、下拉刷新、❓教學入口 |
 | `screens/my_stocks_screen.dart` | 自選清單、開啟即時刷新、刪除鈕（＋左滑刪除）、外部加入即時同步 |
 | `screens/add_stock_screen.dart` | 模糊搜尋＋候選清單＋無結果直接查詢＋已追蹤標記 |
-| `screens/stock_detail_screen.dart` | 殖利率大字、數據卡（含新上市提示）、AppBar「加入我的股票」書籤鈕、折線圖（tooltip 顯示日期）、警示卡 |
+| `screens/stock_detail_screen.dart` | 殖利率大字（近1年＋近2年並列）、數據卡（兩種股利＋新上市提示）、AppBar「加入我的股票」書籤鈕、收盤價折線圖＋股利折線圖（半年/1年/2年）、警示卡 |
 | `services/watchlist_notifier.dart` | 加入自選後跨畫面即時通知「我的股票」重抓清單（singleton ChangeNotifier） |
 | `widgets/stock_card.dart`, `widgets/sector_badge.dart` | 共用股票卡、產業標籤 |
 | `services/api_service.dart`, `services/user_service.dart` | API 呼叫層、UUID 與 user_id 本地管理 |
@@ -105,7 +107,8 @@ Yahoo 財經 ──(yfinance)──> ETL 批次運算 ──> savestock.db
 * **上市 < 2 年（`Listing_Months` < 24）**：上市迄今全部股利 ÷ 上市年數（年化）；前端標示「上市迄今平均」並提醒涵蓋約 X 個月。
 
 ### 殖利率
-`估算殖利率 = 基準現金股利 ÷ 最新收盤價 × 100%`。清單與自選皆依此**降序**排列。
+* **清單顯示與排序**：以**近一年殖利率**（`Dividend_1Y ÷ 最新收盤價`）為主，清單與自選皆依此**降序**排列；卡片股利欄顯示「近1年股利」（不滿 12 月標「近 X 月股利」）。
+* **詳情頁**：同時並列**近一年殖利率**與**近2年平均殖利率**（2 年平均為保守參考，揭露配息陷阱）；數據卡同時顯示近1年股利與近2年平均股利，不滿 1/2 年改標「近 X 月／上市迄今平均」並加邊界提示。
 
 ### 異常警示（防高殖利率陷阱）
 1. **單日暴跌**（依產業分級閾值）：
@@ -168,6 +171,8 @@ Yahoo 財經 ──(yfinance)──> ETL 批次運算 ──> savestock.db
 | 搜尋快取用 STOCK_DAY_ALL | 涵蓋 ETF；上櫃不在範圍 |
 | 債券 ETF（00xxB）不支援 | Yahoo 無資料，顯示明確說明 |
 | 新上市 < 24 月股利年化 | 固定 ÷2 會低估新上市股 |
+| 清單顯示／排序改用近一年殖利率 | 反映最新配息水準；近2年平均保留於詳情頁作保守參考 |
+| 股利歷史存 DB（`Dividends` 表）而非每次即時抓 | 詳情頁股利圖讀 DB 快、與價格圖一致；`_fetch_and_upsert` 順手寫入 |
 | 殖利率降序排序（清單與自選一致） | refresh 端點亦於回傳前排序 |
 | 刪除用「常駐按鈕＋左滑」 | 左滑為觸控手勢，web 滑鼠難觸發 |
 | 自訂 ScrollBehavior 加 mouse | 讓 web/桌機滑鼠可拖曳捲動/下拉 |

@@ -181,6 +181,27 @@ def _dividend_1y(actions) -> float:
     return float(recent["Dividends"].sum())
 
 
+def _upsert_dividends(sid: str, actions, conn) -> None:
+    """將 yfinance 全部現金股利歷史寫入 Dividends 表（供股利折線圖）。"""
+    if actions is None or actions.empty or "Dividends" not in actions.columns:
+        return
+    for ts, amount in actions["Dividends"].items():
+        try:
+            amt = float(amount)
+        except (TypeError, ValueError):
+            continue
+        if amt <= 0:
+            continue  # 0 多為純配股（split）列，非現金股利
+        try:
+            conn.execute(text("""
+                INSERT INTO Dividends (Stock_ID, Ex_Date, Amount)
+                VALUES (:sid, :date, :amt)
+                ON CONFLICT (Stock_ID, Ex_Date) DO UPDATE SET Amount = EXCLUDED.Amount
+            """), {"sid": sid, "date": ts.date(), "amt": amt})
+        except Exception:
+            pass
+
+
 def _fetch_and_upsert(sid: str, conn) -> dict | None:
     """從 yfinance 抓取最新資料並寫入 DB，回傳股票 dict 或 None（查無此股）。"""
     ticker = yf.Ticker(sid)
@@ -212,8 +233,9 @@ def _fetch_and_upsert(sid: str, conn) -> dict | None:
 
     # 計算平均股利（上市不滿2年改用上市迄今年化）+ 近一年股利
     listing_months = _listing_months(info)
-    avg_div = _avg_dividend(ticker.actions, listing_months)
-    div_1y = _dividend_1y(ticker.actions)
+    actions = ticker.actions
+    avg_div = _avg_dividend(actions, listing_months)
+    div_1y = _dividend_1y(actions)
 
     latest = hist.iloc[-1]
     prev = hist.iloc[-2] if len(hist) > 1 else latest
@@ -271,6 +293,8 @@ def _fetch_and_upsert(sid: str, conn) -> dict | None:
         except Exception:
             pass
 
+    _upsert_dividends(sid, actions, conn)
+
     yield_est = round(avg_div / close * 100, 2) if close and avg_div else None
     yield_1y = round(div_1y / close * 100, 2) if close and div_1y else None
     return {
@@ -300,8 +324,8 @@ def get_default_stocks(conn=Depends(get_db)):
         {_LATEST_PRICE_JOIN}
         WHERE sm.Is_Default = 1
         ORDER BY
-            CASE WHEN sm.Avg_Dividend_2Y > 0 AND dp.Close_Price > 0
-                 THEN sm.Avg_Dividend_2Y / dp.Close_Price * 100
+            CASE WHEN sm.Dividend_1Y > 0 AND dp.Close_Price > 0
+                 THEN sm.Dividend_1Y / dp.Close_Price * 100
                  ELSE 0 END DESC
     """)).fetchall()
     return [_row_to_dict(r) for r in rows]
@@ -321,7 +345,7 @@ def refresh_default_stocks(conn=Depends(get_db)):
                 results.append(data)
         except Exception:
             pass  # 單檔失敗不影響其餘
-    results.sort(key=lambda d: d.get("estimated_yield") or -1, reverse=True)
+    results.sort(key=lambda d: d.get("yield_1y") or -1, reverse=True)
     return results
 
 
@@ -450,3 +474,28 @@ def get_stock_prices(
         }
         for r in rows
     ]
+
+
+@router.get("/{stock_id}/dividends")
+def get_stock_dividends(
+    stock_id: str,
+    months: int = Query(24, ge=1, le=120),
+    conn=Depends(get_db),
+):
+    """個股近 N 個月現金股利發放紀錄（供詳情頁股利折線圖；6/12/24 月）。"""
+    exists = conn.execute(
+        text("SELECT 1 FROM Stock_Master WHERE Stock_ID = :sid"),
+        {"sid": stock_id},
+    ).fetchone()
+    if not exists:
+        raise HTTPException(status_code=404, detail="Stock not found")
+
+    cutoff = (datetime.now() - timedelta(days=int(months * 30.44))).date()
+    rows = conn.execute(text("""
+        SELECT Ex_Date, Amount
+        FROM Dividends
+        WHERE Stock_ID = :sid AND Ex_Date >= :cutoff
+        ORDER BY Ex_Date ASC
+    """), {"sid": stock_id, "cutoff": str(cutoff)}).fetchall()
+
+    return [{"date": str(r.Ex_Date), "amount": r.Amount} for r in rows]

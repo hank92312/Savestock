@@ -68,6 +68,14 @@ CREATE TABLE User_Preferences (
     Updated_At DATETIME DEFAULT (datetime('now', 'localtime'))
 );
 
+-- 8. 股利發放紀錄 (Dividends) — 供詳情頁股利折線圖
+CREATE TABLE Dividends (
+    Stock_ID VARCHAR(20) REFERENCES Stock_Master(Stock_ID),
+    Ex_Date DATE NOT NULL,         -- 除息日（yfinance dividends 索引日期）
+    Amount REAL NOT NULL,          -- 每股現金股利
+    UNIQUE(Stock_ID, Ex_Date)
+);
+
 -- 初始資料填充
 INSERT INTO Plan_Configs (Tier_Name, Max_Total_Stocks) VALUES ('Free', 5);
 INSERT INTO Plan_Configs (Tier_Name, Max_Total_Stocks) VALUES ('Premium_Tier_1', 20);

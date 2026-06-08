@@ -20,6 +20,10 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
   String? _error;
   int _selectedDays = 30;
 
+  List<DividendPoint>? _dividends;
+  String? _divError;
+  int _selectedDivMonths = 24;
+
   int? _userId;
   bool? _inWatchlist; // null = 仍在確認中
   bool _adding = false;
@@ -30,11 +34,37 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
     {'label': '1年',  'days': 365},
   ];
 
+  static const _divPeriods = [
+    {'label': '半年', 'months': 6},
+    {'label': '1年',  'months': 12},
+    {'label': '2年',  'months': 24},
+  ];
+
   @override
   void initState() {
     super.initState();
     _loadPrices();
+    _loadDividends();
     _loadWatchlistStatus();
+  }
+
+  Future<void> _loadDividends() async {
+    setState(() { _dividends = null; _divError = null; });
+    try {
+      final pts = await ApiService.fetchDividends(
+          widget.stock.stockId, months: _selectedDivMonths);
+      if (!mounted) return;
+      setState(() => _dividends = pts);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _divError = '無法載入股利資料');
+    }
+  }
+
+  void _selectDivPeriod(int months) {
+    if (_selectedDivMonths == months) return;
+    setState(() => _selectedDivMonths = months);
+    _loadDividends();
   }
 
   Future<void> _loadWatchlistStatus() async {
@@ -247,9 +277,90 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
             ),
             const SizedBox(height: 12),
             _PriceChart(prices: _prices, error: _error),
+
+            const SizedBox(height: 28),
+
+            // ── 股利折線圖 ───────────────────────────────────
+            Row(
+              children: [
+                const Text(
+                  '股利發放走勢',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.textPrimary,
+                  ),
+                ),
+                const Spacer(),
+                _PeriodChips(
+                  labels: [for (final p in _divPeriods) p['label'] as String],
+                  values: [for (final p in _divPeriods) p['months'] as int],
+                  selected: _selectedDivMonths,
+                  onSelect: _selectDivPeriod,
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            _DividendChart(dividends: _dividends, error: _divError),
           ],
         ),
       ),
+    );
+  }
+}
+
+// ── 期間切換膠囊（股利圖用）────────────────────────────────────
+
+class _PeriodChips extends StatelessWidget {
+  final List<String> labels;
+  final List<int> values;
+  final int selected;
+  final ValueChanged<int> onSelect;
+
+  const _PeriodChips({
+    required this.labels,
+    required this.values,
+    required this.selected,
+    required this.onSelect,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (var i = 0; i < labels.length; i++)
+          Padding(
+            padding: const EdgeInsets.only(left: 6),
+            child: GestureDetector(
+              onTap: () => onSelect(values[i]),
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                decoration: BoxDecoration(
+                  color:
+                      selected == values[i] ? AppTheme.primary : AppTheme.surface,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: selected == values[i]
+                        ? AppTheme.primary
+                        : AppTheme.divider,
+                  ),
+                ),
+                child: Text(
+                  labels[i],
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: selected == values[i]
+                        ? Colors.white
+                        : AppTheme.textSecondary,
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
@@ -376,6 +487,13 @@ class _MetricsCard extends StatelessWidget {
   final Stock stock;
   const _MetricsCard({required this.stock});
 
+  /// 近一年股利標籤：上市不滿 12 月改標「近 X 月股利」
+  String get _oneYearLabel {
+    final m = stock.listingMonths;
+    if (m != null && m < 12) return '近$m月股利';
+    return '近1年股利';
+  }
+
   @override
   Widget build(BuildContext context) {
     final isNew = stock.isNewListing;
@@ -386,26 +504,43 @@ class _MetricsCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: AppTheme.divider),
       ),
-      child: Row(
+      child: Column(
         children: [
-          _Stat(
-            label: '最新收盤價',
-            value: stock.closePrice != null
-                ? '\$${stock.closePrice!.toStringAsFixed(2)}'
-                : '--',
+          Row(
+            children: [
+              _Stat(
+                label: '最新收盤價',
+                value: stock.closePrice != null
+                    ? '\$${stock.closePrice!.toStringAsFixed(2)}'
+                    : '--',
+              ),
+              _Divider(),
+              _Stat(
+                label: _oneYearLabel,
+                value: stock.dividend1y != null
+                    ? '\$${stock.dividend1y!.toStringAsFixed(2)}'
+                    : '--',
+              ),
+              _Divider(),
+              _Stat(
+                label: isNew ? '上市迄今平均股利' : '近2年平均股利',
+                value: stock.avgDividend2y != null
+                    ? '\$${stock.avgDividend2y!.toStringAsFixed(2)}'
+                    : '--',
+              ),
+            ],
           ),
-          _Divider(),
-          _Stat(
-            label: isNew ? '上市迄今平均股利' : '近2年平均股利',
-            value: stock.avgDividend2y != null
-                ? '\$${stock.avgDividend2y!.toStringAsFixed(2)}'
-                : '--',
-          ),
-          _Divider(),
-          _Stat(
-            label: '資料日期',
-            value: stock.lastDate ?? '--',
-          ),
+          if (stock.lastDate != null) ...[
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerRight,
+              child: Text(
+                '資料日期：${stock.lastDate}',
+                style: const TextStyle(
+                    fontSize: 11, color: AppTheme.textSecondary),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -649,4 +784,142 @@ class _ChartPlaceholder extends StatelessWidget {
         child: Text(message,
             style: const TextStyle(color: AppTheme.textSecondary)),
       );
+}
+
+// ── 股利折線圖 ────────────────────────────────────────────────
+
+class _DividendChart extends StatelessWidget {
+  final List<DividendPoint>? dividends;
+  final String? error;
+  const _DividendChart({this.dividends, this.error});
+
+  @override
+  Widget build(BuildContext context) {
+    if (error != null) return _ChartPlaceholder(message: error!);
+    if (dividends == null) {
+      return const SizedBox(
+        height: 200,
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+    if (dividends!.isEmpty) {
+      return const _ChartPlaceholder(message: '此期間無股利發放紀錄');
+    }
+
+    final divs = dividends!;
+    final spots = divs
+        .asMap()
+        .entries
+        .map((e) => FlSpot(e.key.toDouble(), e.value.amount))
+        .toList();
+    final maxAmt = divs.map((d) => d.amount).reduce((a, b) => a > b ? a : b);
+    final maxY = maxAmt * 1.25;
+
+    // 單點時左右各留一格，避免線圖貼邊
+    final maxX = (divs.length - 1).toDouble();
+
+    return Container(
+      height: 220,
+      padding: const EdgeInsets.only(right: 8, top: 8, bottom: 4),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.divider),
+      ),
+      child: LineChart(
+        LineChartData(
+          minX: maxX == 0 ? -0.5 : 0,
+          maxX: maxX == 0 ? 0.5 : maxX,
+          minY: 0,
+          maxY: maxY,
+          gridData: FlGridData(
+            show: true,
+            drawVerticalLine: false,
+            getDrawingHorizontalLine: (_) =>
+                FlLine(color: AppTheme.divider, strokeWidth: 1),
+          ),
+          borderData: FlBorderData(show: false),
+          titlesData: FlTitlesData(
+            leftTitles: AxisTitles(
+              sideTitles: SideTitles(
+                showTitles: true,
+                reservedSize: 44,
+                getTitlesWidget: (v, _) => Text(
+                  v.toStringAsFixed(1),
+                  style: const TextStyle(
+                      fontSize: 10, color: AppTheme.textSecondary),
+                ),
+              ),
+            ),
+            bottomTitles: AxisTitles(
+              sideTitles: SideTitles(
+                showTitles: true,
+                interval: divs.length > 6
+                    ? (divs.length / 5).ceilToDouble()
+                    : 1,
+                getTitlesWidget: (v, _) {
+                  final idx = v.toInt();
+                  if (idx < 0 || idx >= divs.length || v != idx.toDouble()) {
+                    return const SizedBox();
+                  }
+                  final d = divs[idx].date;
+                  return Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      '${d.year.toString().substring(2)}/${d.month.toString().padLeft(2, '0')}',
+                      style: const TextStyle(
+                          fontSize: 10, color: AppTheme.textSecondary),
+                    ),
+                  );
+                },
+              ),
+            ),
+            topTitles:
+                const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            rightTitles:
+                const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          ),
+          lineBarsData: [
+            LineChartBarData(
+              spots: spots,
+              isCurved: false,
+              color: AppTheme.gainGreen,
+              barWidth: 2.5,
+              dotData: FlDotData(
+                show: true,
+                getDotPainter: (_, __, ___, ____) => FlDotCirclePainter(
+                  radius: 3.5,
+                  color: AppTheme.gainGreen,
+                  strokeWidth: 0,
+                ),
+              ),
+              belowBarData: BarAreaData(
+                show: true,
+                color: AppTheme.gainGreen.withOpacity(0.08),
+              ),
+            ),
+          ],
+          lineTouchData: LineTouchData(
+            touchTooltipData: LineTouchTooltipData(
+              getTooltipItems: (spots) => spots.map((s) {
+                final idx = s.x.toInt();
+                final pt =
+                    (idx >= 0 && idx < divs.length) ? divs[idx] : null;
+                final dateLabel = pt != null
+                    ? '${pt.date.year}/${pt.date.month.toString().padLeft(2, '0')}/${pt.date.day.toString().padLeft(2, '0')}\n'
+                    : '';
+                return LineTooltipItem(
+                  '$dateLabel配息 \$${s.y.toStringAsFixed(2)}',
+                  const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600),
+                );
+              }).toList(),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }

@@ -16,6 +16,18 @@ class PricePoint {
       );
 }
 
+class DividendPoint {
+  final DateTime date;
+  final double amount;
+
+  const DividendPoint({required this.date, required this.amount});
+
+  factory DividendPoint.fromJson(Map<String, dynamic> j) => DividendPoint(
+        date: DateTime.parse(j['date'] as String),
+        amount: (j['amount'] as num).toDouble(),
+      );
+}
+
 class SearchCandidate {
   final String stockId; // 含後綴，如 "2330.TW"、"6147.TWO"
   final String name;
@@ -121,6 +133,19 @@ class ApiService {
     final List data = jsonDecode(utf8.decode(res.bodyBytes)) as List;
     return data
         .map((e) => PricePoint.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// 取得個股近 N 個月現金股利發放紀錄（供股利折線圖，預設 24 個月）
+  static Future<List<DividendPoint>> fetchDividends(String stockId,
+      {int months = 24}) async {
+    final res = await http.get(
+      Uri.parse('$_base/stocks/$stockId/dividends?months=$months'),
+    );
+    if (res.statusCode != 200) throw Exception('載入失敗 (${res.statusCode})');
+    final List data = jsonDecode(utf8.decode(res.bodyBytes)) as List;
+    return data
+        .map((e) => DividendPoint.fromJson(e as Map<String, dynamic>))
         .toList();
   }
 

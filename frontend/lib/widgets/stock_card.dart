@@ -10,9 +10,15 @@ class StockCard extends StatelessWidget {
 
   const StockCard({super.key, required this.stock, this.isTablet = false});
 
+  /// 近一年股利標籤：上市不滿 12 月時改標「近 X 月股利」
+  static String _dividendLabel(Stock stock) {
+    final m = stock.listingMonths;
+    if (m != null && m < 12) return '近$m月股利';
+    return '近1年股利';
+  }
+
   @override
   Widget build(BuildContext context) {
-    final yield_ = stock.estimatedYield;
     final price = stock.closePrice;
 
     return Card(
@@ -32,9 +38,10 @@ class StockCard extends StatelessWidget {
               _TopRow(stock: stock, isTablet: isTablet),
               const SizedBox(height: 12),
               _MetricsRow(
-                yield_: yield_,
+                yield_: stock.yield1y,
                 price: price,
-                avgDiv: stock.avgDividend2y,
+                dividend: stock.dividend1y,
+                dividendLabel: _dividendLabel(stock),
                 isTablet: isTablet,
               ),
               if (stock.alertFlag) ...[
@@ -102,10 +109,15 @@ class _TopRow extends StatelessWidget {
 class _MetricsRow extends StatelessWidget {
   final double? yield_;
   final double? price;
-  final double? avgDiv;
+  final double? dividend;
+  final String dividendLabel;
   final bool isTablet;
   const _MetricsRow(
-      {this.yield_, this.price, this.avgDiv, required this.isTablet});
+      {this.yield_,
+      this.price,
+      this.dividend,
+      required this.dividendLabel,
+      required this.isTablet});
 
   @override
   Widget build(BuildContext context) {
@@ -126,8 +138,8 @@ class _MetricsRow extends StatelessWidget {
         ),
         const SizedBox(width: 24),
         _Metric(
-          label: '近2年平均股利',
-          value: avgDiv != null ? '\$${avgDiv!.toStringAsFixed(2)}' : '--',
+          label: dividendLabel,
+          value: dividend != null ? '\$${dividend!.toStringAsFixed(2)}' : '--',
           isTablet: isTablet,
         ),
       ],

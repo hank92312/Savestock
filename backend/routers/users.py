@@ -58,8 +58,8 @@ def get_watchlist(user_id: int, conn=Depends(get_db)):
             AND dp.Date = (SELECT MAX(Date) FROM Daily_Prices WHERE Stock_ID = sm.Stock_ID)
         WHERE us.User_ID = :uid AND us.Status = 'Active'
         ORDER BY
-            CASE WHEN sm.Avg_Dividend_2Y > 0 AND dp.Close_Price > 0
-                 THEN sm.Avg_Dividend_2Y / dp.Close_Price * 100
+            CASE WHEN sm.Dividend_1Y > 0 AND dp.Close_Price > 0
+                 THEN sm.Dividend_1Y / dp.Close_Price * 100
                  ELSE 0 END DESC
     """), {"uid": user_id}).fetchall()
 
@@ -175,7 +175,7 @@ def refresh_watchlist(user_id: int, conn=Depends(get_db)):
         except Exception as e:
             errors.append({"stock_id": r.Stock_ID, "error": str(e)})
 
-    # 依估算殖利率降序排序（與 GET /watchlist 一致；無殖利率者排最後）
-    results.sort(key=lambda d: d.get("estimated_yield") or -1, reverse=True)
+    # 依近一年殖利率降序排序（與 GET /watchlist 一致；無殖利率者排最後）
+    results.sort(key=lambda d: d.get("yield_1y") or -1, reverse=True)
 
     return {"updated": len(results), "errors": errors, "stocks": results}
