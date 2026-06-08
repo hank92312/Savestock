@@ -52,7 +52,8 @@ Yahoo 財經 ──(yfinance)──> ETL 批次運算 ──> savestock.db
 | Method | 路徑 | 說明 |
 | --- | --- | --- |
 | GET | `/` `/health` | 歡迎訊息／健康檢查 |
-| GET | `/stocks/` | 預設清單（依估算殖利率**降序**） |
+| GET | `/stocks/` | 預設清單（DB 快照，依殖利率**降序**；開啟時快速載入用） |
+| POST | `/stocks/refresh` | 即時抓 yfinance 更新所有預設股並回傳（首頁「更新」按鈕/下拉用） |
 | GET | `/stocks/search?q=&limit=` | 模糊搜尋候選（上市＋ETF，上櫃不列） |
 | GET | `/stocks/lookup/{id}` | 即時查任意台股（代號或中文名）；自動判斷 `.TW/.TWO`，抓取並寫入 DB |
 | GET | `/stocks/{id}` | 單一股票（DB 快照） |
