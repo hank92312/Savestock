@@ -94,6 +94,21 @@ def _get_tw_chinese_name(code_no_suffix: str) -> str | None:
             continue
     return None
 
+
+def _has_chinese(s: str) -> bool:
+    return any('一' <= c <= '鿿' for c in (s or ""))
+
+
+def _resolve_chinese_name(code_no_suffix: str) -> str | None:
+    """解析台股中文名稱：優先用已批次載入的 TWSE 搜尋快取（穩定可靠），
+    快取無資料才退回即時 mis API。皆失敗回傳 None。"""
+    _load_search_cache()
+    entry = _search_cache.get(code_no_suffix.upper())
+    if entry and _has_chinese(entry["name"]):
+        return entry["name"]
+    realtime = _get_tw_chinese_name(code_no_suffix)
+    return realtime if realtime and _has_chinese(realtime) else None
+
 router = APIRouter(prefix="/stocks", tags=["stocks"])
 
 _LATEST_PRICE_JOIN = """
@@ -185,12 +200,15 @@ def _fetch_and_upsert(sid: str, conn) -> dict | None:
     ).fetchone()
     sector = existing.Sector if existing else "Unknown"
 
+    code_only = sid.replace(".TWO", "").replace(".TW", "")
     if existing:
-        name = existing.Name  # 已有名稱就保留
+        name = existing.Name
+        # 既有名稱若非中文（早期抓取退回了英文名），嘗試升級為正確中文名
+        if not _has_chinese(name):
+            name = _resolve_chinese_name(code_only) or name
     else:
-        # 新股票：優先向 TWSE 抓中文名，失敗才用 yfinance 英文名
-        code_only = sid.replace(".TWO", "").replace(".TW", "")
-        name = _get_tw_chinese_name(code_only) or en_name
+        # 新股票：優先取 TWSE 中文名，皆失敗才用 yfinance 英文名
+        name = _resolve_chinese_name(code_only) or en_name
 
     # 計算平均股利（上市不滿2年改用上市迄今年化）+ 近一年股利
     listing_months = _listing_months(info)

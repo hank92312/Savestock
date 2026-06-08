@@ -121,7 +121,7 @@ class _MetricsRow extends StatelessWidget {
         const SizedBox(width: 24),
         _Metric(
           label: '現價',
-          value: price != null ? '\$${price!.toStringAsFixed(1)}' : '--',
+          value: price != null ? '\$${price!.toStringAsFixed(2)}' : '--',
           isTablet: isTablet,
         ),
         const SizedBox(width: 24),

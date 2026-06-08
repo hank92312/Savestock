@@ -391,7 +391,7 @@ class _MetricsCard extends StatelessWidget {
           _Stat(
             label: '最新收盤價',
             value: stock.closePrice != null
-                ? '\$${stock.closePrice!.toStringAsFixed(1)}'
+                ? '\$${stock.closePrice!.toStringAsFixed(2)}'
                 : '--',
           ),
           _Divider(),
@@ -618,7 +618,7 @@ class _PriceChart extends StatelessWidget {
                     ? '${pt.date.year}/${pt.date.month.toString().padLeft(2, '0')}/${pt.date.day.toString().padLeft(2, '0')}\n'
                     : '';
                 return LineTooltipItem(
-                  '$dateLabel\$${s.y.toStringAsFixed(1)}${pt?.alertFlag == true ? '\n⚠️ 警示' : ''}',
+                  '$dateLabel\$${s.y.toStringAsFixed(2)}${pt?.alertFlag == true ? '\n⚠️ 警示' : ''}',
                   const TextStyle(
                       color: Colors.white,
                       fontSize: 12,
