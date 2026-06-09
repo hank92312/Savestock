@@ -72,34 +72,40 @@ def fetch_stock_data(stock_id: str, name: str, sector: str):
 
     # 3. 抓取股息與配股
     actions = ticker.actions
-    avg_cash = 0
-    avg_stock = 0
+    combined_dividend = 0
+    avg_dividend_5y = 0
+
+    def _calc_avg(src, divisor):
+        """計算現金＋配股年均股利（src = 篩選後的 actions，divisor = 年數）。"""
+        cash = src['Dividends'].sum() / divisor if 'Dividends' in src.columns else 0
+        stock = 0
+        if 'Stock Splits' in src.columns:
+            splits = src[src['Stock Splits'] > 1]['Stock Splits']
+            stock = sum((s - 1) * 10 for s in splits) / divisor
+        return cash + stock
 
     if not actions.empty:
+        # ── 2 年均 ──────────────────────────────────────────────
         if is_new:
-            # 上市迄今全部，年化（除以上市年數）
-            src = actions
-            divisor = (listing_months / 12) or 1
+            combined_dividend = _calc_avg(actions, (listing_months / 12) or 1)
         else:
-            # 處理時區問題，確保比較基準一致
             two_years_ago = datetime.now() - timedelta(days=365*2)
             if actions.index.tzinfo:
                 two_years_ago = two_years_ago.replace(tzinfo=actions.index.tzinfo)
-            else:
-                two_years_ago = two_years_ago.replace(tzinfo=None)
-            src = actions[actions.index > two_years_ago]
-            divisor = 2
+            combined_dividend = _calc_avg(actions[actions.index > two_years_ago], 2)
 
-        if 'Dividends' in src.columns:
-            avg_cash = src['Dividends'].sum() / divisor
-
-        if 'Stock Splits' in src.columns:
-            stock_splits = src[src['Stock Splits'] > 0]
-            # 台股配股計算邏輯：(拆分比例 - 1) * 10 (面額)
-            total_stock_div = sum([(split - 1) * 10 for split in stock_splits['Stock Splits']])
-            avg_stock = total_stock_div / divisor
-
-    combined_dividend = avg_cash + avg_stock
+        # ── 5 年均 ──────────────────────────────────────────────
+        is_under_5y = listing_months is not None and listing_months < 60
+        if is_under_5y:
+            avg_dividend_5y = _calc_avg(actions, (listing_months / 12) or 1)
+        else:
+            five_years_ago = datetime.now() - timedelta(days=365*5)
+            if actions.index.tzinfo:
+                five_years_ago = five_years_ago.replace(tzinfo=actions.index.tzinfo)
+            avg_dividend_5y = _calc_avg(actions[actions.index > five_years_ago], 5)
+    else:
+        combined_dividend = 0
+        avg_dividend_5y = 0
 
     # 近 12 個月現金股利合計（近一年殖利率用）
     dividend_1y = 0
@@ -144,14 +150,15 @@ def fetch_stock_data(stock_id: str, name: str, sector: str):
         })
 
     return {
-        "stock_id":       stock_id,
-        "name":           name,
-        "sector":         sector,
+        "stock_id":        stock_id,
+        "name":            name,
+        "sector":          sector,
         "avg_dividend_2y": combined_dividend,
-        "dividend_1y": dividend_1y,
-        "listing_months": listing_months,
-        "drop_threshold": SECTOR_THRESHOLDS.get(sector, 0.04),  # 小數格式
-        "price_rows":     price_rows,
+        "avg_dividend_5y": avg_dividend_5y,
+        "dividend_1y":     dividend_1y,
+        "listing_months":  listing_months,
+        "drop_threshold":  SECTOR_THRESHOLDS.get(sector, 0.04),
+        "price_rows":      price_rows,
     }
 
 def save_to_db(data):
@@ -161,12 +168,13 @@ def save_to_db(data):
     with engine.begin() as conn:
         # 1. 更新 Stock_Master
         upsert_stock_master = text("""
-            INSERT INTO Stock_Master (Stock_ID, Name, Sector, Avg_Dividend_2Y, Dividend_1Y, Default_Drop_Threshold, Listing_Months, Is_Default, Last_Updated)
-            VALUES (:sid, :name, :sector, :avg_div, :div_1y, :drop_threshold, :listing_months, 1, CURRENT_TIMESTAMP)
+            INSERT INTO Stock_Master (Stock_ID, Name, Sector, Avg_Dividend_2Y, Avg_Dividend_5Y, Dividend_1Y, Default_Drop_Threshold, Listing_Months, Is_Default, Last_Updated)
+            VALUES (:sid, :name, :sector, :avg_div, :avg_div_5y, :div_1y, :drop_threshold, :listing_months, 1, CURRENT_TIMESTAMP)
             ON CONFLICT (Stock_ID) DO UPDATE SET
                 Name = EXCLUDED.Name,
                 Sector = EXCLUDED.Sector,
                 Avg_Dividend_2Y = EXCLUDED.Avg_Dividend_2Y,
+                Avg_Dividend_5Y = EXCLUDED.Avg_Dividend_5Y,
                 Dividend_1Y = EXCLUDED.Dividend_1Y,
                 Default_Drop_Threshold = EXCLUDED.Default_Drop_Threshold,
                 Listing_Months = EXCLUDED.Listing_Months,
@@ -178,6 +186,7 @@ def save_to_db(data):
             "name": data['name'],
             "sector": data['sector'],
             "avg_div": data['avg_dividend_2y'],
+            "avg_div_5y": data['avg_dividend_5y'],
             "div_1y": data['dividend_1y'],
             "drop_threshold": data['drop_threshold'],
             "listing_months": data['listing_months']

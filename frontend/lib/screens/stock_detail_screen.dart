@@ -386,6 +386,16 @@ class _YieldHeader extends StatelessWidget {
     return '上市以來年化（涵蓋 $m 月）';
   }
 
+  /// 指標③：5年平均殖利率標籤
+  String get _fiveYearLabel {
+    final m = stock.listingMonths;
+    if (m == null || m >= 60) return '5年平均殖利率';
+    return '上市以來年化（${(m / 12).round()}年）';
+  }
+
+  /// 上市不滿2年的新上市股不顯示5年指標
+  bool get _show5y => !stock.isNewListing;
+
   @override
   Widget build(BuildContext context) {
     final hasBaseline = stock.estimatedYield != null;
@@ -404,10 +414,20 @@ class _YieldHeader extends StatelessWidget {
       );
     }
 
+    // 計算顯示幾個 block，決定字體大小（3欄縮小避免截字）
+    final blockCount = [
+      if (!stock.isUnder1Y) 1,
+      1, // baseline always shown
+      if (_show5y) 1,
+    ].length;
+    final yieldFontSize = blockCount >= 3 ? 28.0 : 38.0;
+
     final blocks = <Widget>[
       // 上市滿 1 年才顯示「近一年殖利率」
-      if (!stock.isUnder1Y) _yieldBlock('近一年殖利率', stock.yield1y),
-      _yieldBlock(_baselineLabel, stock.estimatedYield),
+      if (!stock.isUnder1Y) _yieldBlock('近一年殖利率', stock.yield1y, fontSize: yieldFontSize),
+      _yieldBlock(_baselineLabel, stock.estimatedYield, fontSize: yieldFontSize),
+      // 上市滿 2 年才顯示 5 年均（新上市股無意義）
+      if (_show5y) _yieldBlock(_fiveYearLabel, stock.yield5y, fontSize: yieldFontSize),
     ];
 
     return Column(
@@ -424,6 +444,7 @@ class _YieldHeader extends StatelessWidget {
             ],
           ),
         ),
+
         // 計算口徑說明：殖利率與股利皆含股票股利（配股面額還原）
         _caveat('殖利率／股利為股利合計（現金＋股票股利，配股按面額還原 =（配股比−1）×10）',
             AppTheme.textSecondary),
@@ -447,14 +468,14 @@ class _YieldHeader extends StatelessWidget {
         child: child,
       );
 
-  Widget _yieldBlock(String label, double? y) {
+  Widget _yieldBlock(String label, double? y, {double fontSize = 38}) {
     final color = _yieldColor(y);
     return Column(
       children: [
         Text(
           y != null ? '${y.toStringAsFixed(2)}%' : '—',
           style: TextStyle(
-            fontSize: 38,
+            fontSize: fontSize,
             fontWeight: FontWeight.w900,
             color: color,
             letterSpacing: -1,
@@ -463,7 +484,7 @@ class _YieldHeader extends StatelessWidget {
         const SizedBox(height: 4),
         Text(label,
             textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary)),
+            style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
       ],
     );
   }
@@ -500,6 +521,8 @@ class _MetricsCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isNew = stock.isNewListing;
+    final isUnder5y = stock.listingMonths != null && stock.listingMonths! < 60;
+    final label5y = isUnder5y ? '上市以來年化股利' : '近5年平均股利';
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -533,6 +556,22 @@ class _MetricsCard extends StatelessWidget {
               ),
             ],
           ),
+          // 近5年平均股利（新上市 <2年 不顯示）
+          if (!isNew) ...[
+            const SizedBox(height: 10),
+            Container(height: 1, color: AppTheme.divider),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                _Stat(
+                  label: label5y,
+                  value: stock.avgDividend5y != null
+                      ? '\$${stock.avgDividend5y!.toStringAsFixed(2)}'
+                      : '--',
+                ),
+              ],
+            ),
+          ],
           if (stock.lastDate != null) ...[
             const SizedBox(height: 12),
             Align(

@@ -116,23 +116,29 @@ _LATEST_PRICE_JOIN = """
         AND dp.Date = (SELECT MAX(Date) FROM Daily_Prices WHERE Stock_ID = sm.Stock_ID)
 """
 
+_SM_COLS = "sm.Stock_ID, sm.Name, sm.Sector, sm.Avg_Dividend_2Y, sm.Avg_Dividend_5Y, sm.Dividend_1Y, sm.Listing_Months"
+
 
 def _row_to_dict(row):
     close = row.Close_Price
     avg_div = row.Avg_Dividend_2Y
+    avg_div_5y = row.Avg_Dividend_5Y
     div_1y = row.Dividend_1Y
     yield_est = round(avg_div / close * 100, 2) if close and avg_div else None
     yield_1y = round(div_1y / close * 100, 2) if close and div_1y else None
+    yield_5y = round(avg_div_5y / close * 100, 2) if close and avg_div_5y else None
     return {
         "stock_id": row.Stock_ID,
         "name": row.Name,
         "sector": row.Sector,
         "avg_dividend_2y": avg_div,
+        "avg_dividend_5y": avg_div_5y,
         "dividend_1y": div_1y,
         "listing_months": row.Listing_Months,
         "close_price": close,
         "estimated_yield": yield_est,
         "yield_1y": yield_1y,
+        "yield_5y": yield_5y,
         "alert_flag": bool(row.Alert_Flag),
         "alert_reason": row.Alert_Reason,
         "last_date": str(row.Date) if row.Date else None,
@@ -196,6 +202,23 @@ def _avg_dividend(actions, listing_months: int | None) -> float:
         two_years_ago = two_years_ago.replace(tzinfo=actions.index.tzinfo)
     recent = total_series[total_series.index > two_years_ago]
     return float(recent.sum()) / 2
+
+
+def _avg_dividend_5y(actions, listing_months: int | None) -> float:
+    """上市滿5年：近5年股利平均(÷5)；不滿5年：上市迄今全部股利年化。"""
+    total_series = _total_div_series(actions)
+    if total_series is None:
+        return 0.0
+    is_under_5y = listing_months is not None and listing_months < 60
+    if is_under_5y:
+        total = float(total_series.sum())
+        years = listing_months / 12
+        return total / years if years > 0 else total
+    five_years_ago = datetime.now() - timedelta(days=365 * 5)
+    if actions.index.tzinfo:
+        five_years_ago = five_years_ago.replace(tzinfo=actions.index.tzinfo)
+    recent = total_series[total_series.index > five_years_ago]
+    return float(recent.sum()) / 5
 
 
 def _dividend_1y(actions) -> float:
@@ -262,10 +285,11 @@ def _fetch_and_upsert(sid: str, conn) -> dict | None:
         # 新股票：優先取 TWSE 中文名，皆失敗才用 yfinance 英文名
         name = _resolve_chinese_name(code_only) or en_name
 
-    # 計算平均股利（上市不滿2年改用上市迄今年化）+ 近一年股利
+    # 計算平均股利（上市不滿2年改用上市迄今年化）+ 近一年股利 + 近5年年均
     listing_months = _listing_months(info)
     actions = ticker.actions
     avg_div = _avg_dividend(actions, listing_months)
+    avg_div_5y = _avg_dividend_5y(actions, listing_months)
     div_1y = _dividend_1y(actions)
 
     latest = hist.iloc[-1]
@@ -290,15 +314,16 @@ def _fetch_and_upsert(sid: str, conn) -> dict | None:
     alert_reason = ", ".join(alert_reasons)
 
     conn.execute(text("""
-        INSERT INTO Stock_Master (Stock_ID, Name, Sector, Avg_Dividend_2Y, Dividend_1Y, Listing_Months, Is_Default, Last_Updated)
-        VALUES (:sid, :name, :sector, :avg_div, :div_1y, :listing_months, 0, CURRENT_TIMESTAMP)
+        INSERT INTO Stock_Master (Stock_ID, Name, Sector, Avg_Dividend_2Y, Avg_Dividend_5Y, Dividend_1Y, Listing_Months, Is_Default, Last_Updated)
+        VALUES (:sid, :name, :sector, :avg_div, :avg_div_5y, :div_1y, :listing_months, 0, CURRENT_TIMESTAMP)
         ON CONFLICT (Stock_ID) DO UPDATE SET
             Avg_Dividend_2Y = EXCLUDED.Avg_Dividend_2Y,
+            Avg_Dividend_5Y = EXCLUDED.Avg_Dividend_5Y,
             Dividend_1Y = EXCLUDED.Dividend_1Y,
             Listing_Months = EXCLUDED.Listing_Months,
             Last_Updated = CURRENT_TIMESTAMP
     """), {"sid": sid, "name": name, "sector": sector, "avg_div": avg_div,
-           "div_1y": div_1y, "listing_months": listing_months})
+           "avg_div_5y": avg_div_5y, "div_1y": div_1y, "listing_months": listing_months})
 
     # 最新一筆：UPSERT（確保今日警示最新）
     conn.execute(text("""
@@ -328,16 +353,19 @@ def _fetch_and_upsert(sid: str, conn) -> dict | None:
 
     yield_est = round(avg_div / close * 100, 2) if close and avg_div else None
     yield_1y = round(div_1y / close * 100, 2) if close and div_1y else None
+    yield_5y = round(avg_div_5y / close * 100, 2) if close and avg_div_5y else None
     return {
         "stock_id": sid,
         "name": name,
         "sector": sector,
         "avg_dividend_2y": avg_div,
+        "avg_dividend_5y": avg_div_5y,
         "dividend_1y": div_1y,
         "listing_months": listing_months,
         "close_price": close,
         "estimated_yield": yield_est,
         "yield_1y": yield_1y,
+        "yield_5y": yield_5y,
         "alert_flag": alert_flag,
         "alert_reason": alert_reason,
         "last_date": str(today),
@@ -349,7 +377,7 @@ def _fetch_and_upsert(sid: str, conn) -> dict | None:
 @router.get("/")
 def get_default_stocks(conn=Depends(get_db)):
     rows = conn.execute(text(f"""
-        SELECT sm.Stock_ID, sm.Name, sm.Sector, sm.Avg_Dividend_2Y, sm.Dividend_1Y, sm.Listing_Months,
+        SELECT {_SM_COLS},
                dp.Close_Price, dp.Alert_Flag, dp.Alert_Reason, dp.Date
         FROM Stock_Master sm
         {_LATEST_PRICE_JOIN}
@@ -462,7 +490,7 @@ def lookup_stock(stock_id: str, conn=Depends(get_db)):
 @router.get("/{stock_id}")
 def get_stock(stock_id: str, conn=Depends(get_db)):
     row = conn.execute(text(f"""
-        SELECT sm.Stock_ID, sm.Name, sm.Sector, sm.Avg_Dividend_2Y, sm.Dividend_1Y, sm.Listing_Months,
+        SELECT {_SM_COLS},
                dp.Close_Price, dp.Alert_Flag, dp.Alert_Reason, dp.Date
         FROM Stock_Master sm
         {_LATEST_PRICE_JOIN}

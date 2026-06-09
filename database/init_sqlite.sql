@@ -29,8 +29,9 @@ CREATE TABLE Stock_Master (
     Stock_ID VARCHAR(20) PRIMARY KEY, 
     Name VARCHAR(100) NOT NULL,
     Sector VARCHAR(50),               
-    Avg_Dividend_2Y REAL,             -- ≥24月：近2年現金股利年均；<24月：上市迄今年化
-    Dividend_1Y REAL,                 -- 近12個月現金股利合計（近一年殖利率用）
+    Avg_Dividend_2Y REAL,             -- ≥24月：近2年股利年均；<24月：上市迄今年化
+    Avg_Dividend_5Y REAL,             -- ≥60月：近5年股利年均；<60月：上市迄今年化
+    Dividend_1Y REAL,                 -- 近12個月股利合計（近一年殖利率用）
     Default_Drop_Threshold REAL,
     Listing_Months INTEGER,           -- 上市迄今月數；< 24 視為新上市（NULL = 未知，視為已滿2年）
     Last_Updated DATETIME DEFAULT (datetime('now', 'localtime'))

@@ -3,11 +3,13 @@ class Stock {
   final String name;
   final String sector;
   final double? avgDividend2y;
-  final double? dividend1y; // 近12個月現金股利合計
+  final double? avgDividend5y; // 近5年股利年均（上市不滿5年則上市迄今年化）
+  final double? dividend1y;    // 近12個月股利合計
   final int? listingMonths; // 上市迄今月數；< 24 視為新上市
   final double? closePrice;
   final double? estimatedYield; // 基準殖利率（2年平均 / 上市以來年化）
-  final double? yield1y; // 近一年殖利率
+  final double? yield1y;        // 近一年殖利率
+  final double? yield5y;        // 5年平均殖利率
   final bool alertFlag;
   final String alertReason;
   final String? lastDate;
@@ -17,11 +19,13 @@ class Stock {
     required this.name,
     required this.sector,
     this.avgDividend2y,
+    this.avgDividend5y,
     this.dividend1y,
     this.listingMonths,
     this.closePrice,
     this.estimatedYield,
     this.yield1y,
+    this.yield5y,
     required this.alertFlag,
     required this.alertReason,
     this.lastDate,
@@ -32,11 +36,13 @@ class Stock {
         name: json['name'] as String,
         sector: json['sector'] as String,
         avgDividend2y: (json['avg_dividend_2y'] as num?)?.toDouble(),
+        avgDividend5y: (json['avg_dividend_5y'] as num?)?.toDouble(),
         dividend1y: (json['dividend_1y'] as num?)?.toDouble(),
         listingMonths: (json['listing_months'] as num?)?.toInt(),
         closePrice: (json['close_price'] as num?)?.toDouble(),
         estimatedYield: (json['estimated_yield'] as num?)?.toDouble(),
         yield1y: (json['yield_1y'] as num?)?.toDouble(),
+        yield5y: (json['yield_5y'] as num?)?.toDouble(),
         alertFlag: json['alert_flag'] as bool? ?? false,
         alertReason: json['alert_reason'] as String? ?? '',
         lastDate: json['last_date'] as String?,
