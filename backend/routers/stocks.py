@@ -315,7 +315,7 @@ def _fetch_and_upsert(sid: str, conn) -> dict | None:
 
     conn.execute(text("""
         INSERT INTO Stock_Master (Stock_ID, Name, Sector, Avg_Dividend_2Y, Avg_Dividend_5Y, Dividend_1Y, Listing_Months, Is_Default, Last_Updated)
-        VALUES (:sid, :name, :sector, :avg_div, :avg_div_5y, :div_1y, :listing_months, 0, CURRENT_TIMESTAMP)
+        VALUES (:sid, :name, :sector, :avg_div, :avg_div_5y, :div_1y, :listing_months, FALSE, CURRENT_TIMESTAMP)
         ON CONFLICT (Stock_ID) DO UPDATE SET
             Avg_Dividend_2Y = EXCLUDED.Avg_Dividend_2Y,
             Avg_Dividend_5Y = EXCLUDED.Avg_Dividend_5Y,
@@ -381,7 +381,7 @@ def get_default_stocks(conn=Depends(get_db)):
                dp.Close_Price, dp.Alert_Flag, dp.Alert_Reason, dp.Date
         FROM Stock_Master sm
         {_LATEST_PRICE_JOIN}
-        WHERE sm.Is_Default = 1
+        WHERE sm.Is_Default = TRUE
         ORDER BY
             CASE WHEN sm.Dividend_1Y > 0 AND dp.Close_Price > 0
                  THEN sm.Dividend_1Y / dp.Close_Price * 100
@@ -394,7 +394,7 @@ def get_default_stocks(conn=Depends(get_db)):
 def refresh_default_stocks(conn=Depends(get_db)):
     """即時從 yfinance 更新所有預設股的最新價格/警示並回傳（依殖利率降序）。"""
     rows = conn.execute(
-        text("SELECT Stock_ID FROM Stock_Master WHERE Is_Default = 1")
+        text("SELECT Stock_ID FROM Stock_Master WHERE Is_Default = TRUE")
     ).fetchall()
     results = []
     for r in rows:

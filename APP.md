@@ -1,8 +1,9 @@
 # 專案架構文件：Savestock（長線存股防護系統）
 
-> 最後更新：2026-06-08
+> 最後更新：2026-06-09
 > 本文件為專案的單一入口參考：看完即可掌握整體內容與架構。
 > 細部待辦與部署決策見 [TODONEXT.md](TODONEXT.md)。
+> 雲端部署現況見 [第 7 節](#7-雲端部署現況gcp)。
 
 ---
 
@@ -23,7 +24,8 @@
 | 前端 | **Flutter (Dart)** | 跨平台 UI、財經折線圖（fl_chart）、互動 |
 | 後端 | **Python FastAPI** | RESTful API，供 Flutter 呼叫 |
 | ETL | **Python（yfinance + SQLAlchemy）** | 抓盤後資料、算股利/殖利率/警示、寫入 DB |
-| 資料庫 | **SQLite**（開發）／PostgreSQL（生產規劃中） | 透過 SQLAlchemy `DATABASE_URL` 切換 |
+| 資料庫 | **SQLite**（本機開發）／**PostgreSQL 15**（生產：GCP Cloud SQL） | 透過 SQLAlchemy `DATABASE_URL` 切換；生產 schema 見 `database/init_postgres.sql` |
+| 雲端 | **GCP Cloud Run + Cloud SQL** | FastAPI 容器化部署，見第 7 節 |
 | 本地儲存 | shared_preferences | 用戶 UUID、教學導覽看過旗標 |
 
 ### 資料流
@@ -157,12 +159,48 @@ Yahoo 財經 ──(yfinance)──> ETL 批次運算 ──> savestock.db
 
 ---
 
-## 7. 部署規劃（P5，後期）
+## 7. 雲端部署現況（GCP）
 
-* **已定**：Web 優先、訪客 UUID、App 內教學導覽。
-* **待決**：後端託管平台（Render / Railway / Fly.io / 自架 VPS 比較表已列於 TODONEXT，由使用者決定）。
-* **必做工作**：CORS 收斂、**SQLite→PostgreSQL（schema 需改寫，非僅換連線字串）**、前端正式 API 網址＋HTTPS、ETL 伺服器排程、Flutter Web 打包。
-* **風險**：`yfinance`（爬 Yahoo）公開/商用可能違反服務條款，上線前須評估合法資料源；訪客模式資料綁裝置。
+> 平台已定案：**Google Cloud Platform**（使用 $300 試用折抵金，70 天試用期）。
+
+### 7.1 已部署資源（GCP 專案：`savestock-app`，區域 `asia-east1`）
+
+| 資源 | 服務 | 識別 / 設定 |
+| --- | --- | --- |
+| 後端 API | **Cloud Run** | 服務名 `savestock-api`；512Mi；min=0 / max=2 instances；允許未驗證存取 |
+| 資料庫 | **Cloud SQL (PostgreSQL 15)** | 實例 `savestock-db`；`db-f1-micro`；10GB SSD；**無自動備份**（省成本） |
+| 容器倉庫 | **Artifact Registry** | `savestock-repo`（Docker 格式） |
+| 容器建置 | **Cloud Build** | 遠端建置（本機未裝 Docker）；image tag `savestock-api:latest` |
+
+* **正式 API 網址**：`https://savestock-api-62102931839.asia-east1.run.app`
+* **DB 連線**：Cloud Run 透過 Unix socket 連 Cloud SQL（`--add-cloudsql-instances`），`DATABASE_URL` 走 `host=/cloudsql/savestock-app:asia-east1:savestock-db`。
+* **容器化檔案**：`backend/Dockerfile`（python:3.11-slim + libpq）、`backend/.dockerignore`。
+* **健康檢查**：`/health` 已驗證回 `{"status":"healthy"}`；`/stocks` 已驗證回 200（空陣列，待資料填充）。
+
+### 7.2 SQLite → PostgreSQL 改寫重點（已完成）
+
+* 新增 `database/init_postgres.sql`（`SERIAL` 主鍵、`BOOLEAN` 型別、`ON CONFLICT DO NOTHING` 種子）。
+* `backend/database.py`：依 `DATABASE_URL` 前綴自動切換（SQLite 才加 `check_same_thread`）。
+* `backend/routers/stocks.py`：布林比較改 `Is_Default = TRUE`、寫入改 `FALSE`（PostgreSQL 不接受 `boolean = integer`）。
+* `backend/requirements.txt`：補上 `yfinance`、`requests`（Cloud Run 容器缺套件會啟動失敗）。
+
+### 7.3 待辦（下次接續）
+
+1. **雲端 DB 資料填充**：本機直連 Cloud SQL 公網 IP 會卡住（預設未授權網路）。改用 **Cloud SQL Auth Proxy** 或暫時加白名單跑 `etl/fetch_data.py`，或改為 Cloud Run 內建一個 `/admin/seed` 端點觸發。
+2. **Flutter App 改連雲端 API**：`services/api_service.dart` 的 base URL 由 `localhost:8000` 換成正式網址。
+3. **ETL 自動排程**：Cloud Scheduler 定時觸發（盤後）。
+4. **CORS 收斂**：目前 `allow_origins=["*"]`，上線前限定來源。
+
+### 7.4 成本提醒
+
+* 試用期內全部由 $300 折抵金支付。
+* 試用後預估 **約 $10–15/月**（最大固定成本為 Cloud SQL `db-f1-micro` ~$7–10；Cloud Run 低流量近乎免費）。
+* 試用期結束前須評估是否續用或改採「最小雲端 DB（只存 Users/Subscriptions）＋ 裝置端 sqflite」的 Local-First 架構（討論見對話紀錄，尚未實作）。
+
+### 7.5 風險
+
+* `yfinance`（爬 Yahoo）公開/商用可能違反服務條款，上線前須評估合法資料源。
+* 訪客 UUID 模式資料綁裝置，換機/重裝遺失。
 
 ---
 
