@@ -1,22 +1,13 @@
 # Savestock — 後續待辦事項 (TODONEXT)
 
-> 最後更新：2026-06-08（收工）
-> 目前進度：Phase 1–3 ✅ 主功能完成；P3 體驗優化 ✅；P4 後端補強 ✅；onboarding ✅；近一年殖利率基準＋股利折線圖＋配股納入 ✅。下一階段：**股利圖改直條圖** → **P5 部署**。
+> 最後更新：2026-06-09（收工）
+> 目前進度：Phase 1–3 ✅ 主功能完成；P3 體驗優化 ✅；P4 後端補強 ✅；onboarding ✅；近一年殖利率基準＋股利直條圖（含配股分色）✅。下一階段：**P5 部署**。
 
 ---
 
-## ⭐ 下次開工最優先：股利圖改堆疊直條圖
+## ✅ 今日完成項目（2026-06-09）
 
-> 折線圖在「含配股年度」會多出一個低點（如 2883 凱基金 2025/8 配股 0.1），折線不直觀。
-> 改為**堆疊直條圖**（仿 Yahoo 股市「歷年股利分配」）：每根 bar = 該年現金股利 + 股票股利分色堆疊。
-
-- [ ] `stock_detail_screen.dart` 的 `_DividendChart` 由 `LineChart` 改為 `BarChart`（fl_chart 已有 `BarChart`/`BarChartGroupData`/`BarChartRodData` + `rodStackItems` 可做堆疊）
-  - 淺藍＝現金股利、深紫＝股票股利（配股面額還原），圖例兩色（沿用現有 `DividendPoint.cash`/`stock`/`total`）
-  - tooltip 顯示「現金 X ＋ 股票 Y ＝ 合計 Z」，沿用現有拆解邏輯
-  - 半年／1年／2年 期間切換沿用現有 `_PeriodChips`
-  - X 軸用「除權息日 YYYY/MM」或年度標籤
-- [ ] 確認資料正確性已驗證：2883 凱基金 2025 = 現金 0.85 ＋ 股票 0.1（與 Yahoo 一致，非 bug，配股 ratio 1.01 → (1.01−1)×10=0.1 元）
-- 注意：`DividendPoint` 模型、`/stocks/{id}/dividends` 端點皆已回傳 cash/stock/total，**後端不需改**，只動前端圖表元件。
+- [x] **股利圖改堆疊直條圖**：`_DividendChart` 由 `LineChart` → `BarChart`，現金（淺藍 `#4FC3F7`）＋股票（深紫 `#7E57C2`）堆疊；加雙色圖例；tooltip 顯示「現金 X ＋股票 Y ＝合計 Z」；標題改「歷年股利分配」；前端單檔修改，後端不動；視覺驗證通過（2883 三筆分色正確）。
 
 ---
 

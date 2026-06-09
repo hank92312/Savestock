@@ -284,7 +284,7 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
             Row(
               children: [
                 const Text(
-                  '股利發放走勢',
+                  '歷年股利分配',
                   style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w700,
@@ -789,12 +789,16 @@ class _ChartPlaceholder extends StatelessWidget {
       );
 }
 
-// ── 股利折線圖 ────────────────────────────────────────────────
+// ── 股利堆疊直條圖 ────────────────────────────────────────────
+// 每根 bar = 該次除權息的現金股利（淺藍）＋ 股票股利（深紫，配股面額還原）堆疊
 
 class _DividendChart extends StatelessWidget {
   final List<DividendPoint>? dividends;
   final String? error;
   const _DividendChart({this.dividends, this.error});
+
+  static const Color _cashColor = Color(0xFF4FC3F7); // 淺藍＝現金股利
+  static const Color _stockColor = Color(0xFF7E57C2); // 深紫＝股票股利
 
   @override
   Widget build(BuildContext context) {
@@ -810,123 +814,149 @@ class _DividendChart extends StatelessWidget {
     }
 
     final divs = dividends!;
-    final spots = divs
-        .asMap()
-        .entries
-        .map((e) => FlSpot(e.key.toDouble(), e.value.total))
-        .toList();
     final maxAmt = divs.map((d) => d.total).reduce((a, b) => a > b ? a : b);
     final maxY = maxAmt * 1.25;
 
-    // 單點時左右各留一格，避免線圖貼邊
-    final maxX = (divs.length - 1).toDouble();
-
-    return Container(
-      height: 220,
-      padding: const EdgeInsets.only(right: 8, top: 8, bottom: 4),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppTheme.divider),
-      ),
-      child: LineChart(
-        LineChartData(
-          minX: maxX == 0 ? -0.5 : 0,
-          maxX: maxX == 0 ? 0.5 : maxX,
-          minY: 0,
-          maxY: maxY,
-          gridData: FlGridData(
-            show: true,
-            drawVerticalLine: false,
-            getDrawingHorizontalLine: (_) =>
-                FlLine(color: AppTheme.divider, strokeWidth: 1),
+    final groups = divs.asMap().entries.map((e) {
+      final d = e.value;
+      return BarChartGroupData(
+        x: e.key,
+        barRods: [
+          BarChartRodData(
+            toY: d.total,
+            width: 18,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(3)),
+            rodStackItems: [
+              BarChartRodStackItem(0, d.cash, _cashColor),
+              if (d.stock > 0)
+                BarChartRodStackItem(d.cash, d.total, _stockColor),
+            ],
           ),
-          borderData: FlBorderData(show: false),
-          titlesData: FlTitlesData(
-            leftTitles: AxisTitles(
-              sideTitles: SideTitles(
-                showTitles: true,
-                reservedSize: 44,
-                getTitlesWidget: (v, _) => Text(
-                  v.toStringAsFixed(1),
-                  style: const TextStyle(
-                      fontSize: 10, color: AppTheme.textSecondary),
-                ),
+        ],
+      );
+    }).toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // 圖例
+        Row(
+          children: [
+            _legendDot(_cashColor, '現金股利'),
+            const SizedBox(width: 16),
+            _legendDot(_stockColor, '股票股利'),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Container(
+          height: 220,
+          padding: const EdgeInsets.only(right: 8, top: 8, bottom: 4, left: 4),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppTheme.divider),
+          ),
+          child: BarChart(
+            BarChartData(
+              maxY: maxY,
+              minY: 0,
+              alignment: BarChartAlignment.spaceAround,
+              gridData: FlGridData(
+                show: true,
+                drawVerticalLine: false,
+                getDrawingHorizontalLine: (_) =>
+                    FlLine(color: AppTheme.divider, strokeWidth: 1),
               ),
-            ),
-            bottomTitles: AxisTitles(
-              sideTitles: SideTitles(
-                showTitles: true,
-                interval: divs.length > 6
-                    ? (divs.length / 5).ceilToDouble()
-                    : 1,
-                getTitlesWidget: (v, _) {
-                  final idx = v.toInt();
-                  if (idx < 0 || idx >= divs.length || v != idx.toDouble()) {
-                    return const SizedBox();
-                  }
-                  final d = divs[idx].date;
-                  return Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Text(
-                      '${d.year.toString().substring(2)}/${d.month.toString().padLeft(2, '0')}',
+              borderData: FlBorderData(show: false),
+              titlesData: FlTitlesData(
+                leftTitles: AxisTitles(
+                  sideTitles: SideTitles(
+                    showTitles: true,
+                    reservedSize: 44,
+                    getTitlesWidget: (v, _) => Text(
+                      v.toStringAsFixed(1),
                       style: const TextStyle(
                           fontSize: 10, color: AppTheme.textSecondary),
                     ),
-                  );
-                },
+                  ),
+                ),
+                bottomTitles: AxisTitles(
+                  sideTitles: SideTitles(
+                    showTitles: true,
+                    reservedSize: 22,
+                    interval: 1,
+                    getTitlesWidget: (v, _) {
+                      final idx = v.toInt();
+                      if (idx < 0 ||
+                          idx >= divs.length ||
+                          v != idx.toDouble()) {
+                        return const SizedBox();
+                      }
+                      // 條數多時稀疏顯示，避免標籤重疊
+                      final step = divs.length > 6
+                          ? (divs.length / 5).ceil()
+                          : 1;
+                      if (idx % step != 0) return const SizedBox();
+                      final d = divs[idx].date;
+                      return Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          '${d.year.toString().substring(2)}/${d.month.toString().padLeft(2, '0')}',
+                          style: const TextStyle(
+                              fontSize: 10, color: AppTheme.textSecondary),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                topTitles:
+                    const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                rightTitles:
+                    const AxisTitles(sideTitles: SideTitles(showTitles: false)),
               ),
-            ),
-            topTitles:
-                const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            rightTitles:
-                const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          ),
-          lineBarsData: [
-            LineChartBarData(
-              spots: spots,
-              isCurved: false,
-              color: AppTheme.gainGreen,
-              barWidth: 2.5,
-              dotData: FlDotData(
-                show: true,
-                getDotPainter: (_, __, ___, ____) => FlDotCirclePainter(
-                  radius: 3.5,
-                  color: AppTheme.gainGreen,
-                  strokeWidth: 0,
+              barGroups: groups,
+              barTouchData: BarTouchData(
+                touchTooltipData: BarTouchTooltipData(
+                  getTooltipItem: (group, _, rod, __) {
+                    final d = divs[group.x];
+                    final dateLabel =
+                        '${d.date.year}/${d.date.month.toString().padLeft(2, '0')}/${d.date.day.toString().padLeft(2, '0')}';
+                    // 有配股時拆解現金／股票，否則只顯示現金配息
+                    final body = d.stock > 0
+                        ? '現金 \$${d.cash.toStringAsFixed(2)} ＋股票 \$${d.stock.toStringAsFixed(2)}\n合計 \$${d.total.toStringAsFixed(2)}'
+                        : '配息 \$${d.total.toStringAsFixed(2)}';
+                    return BarTooltipItem(
+                      '$dateLabel\n$body',
+                      const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600),
+                    );
+                  },
                 ),
               ),
-              belowBarData: BarAreaData(
-                show: true,
-                color: AppTheme.gainGreen.withOpacity(0.08),
-              ),
-            ),
-          ],
-          lineTouchData: LineTouchData(
-            touchTooltipData: LineTouchTooltipData(
-              getTooltipItems: (spots) => spots.map((s) {
-                final idx = s.x.toInt();
-                final pt =
-                    (idx >= 0 && idx < divs.length) ? divs[idx] : null;
-                final dateLabel = pt != null
-                    ? '${pt.date.year}/${pt.date.month.toString().padLeft(2, '0')}/${pt.date.day.toString().padLeft(2, '0')}\n'
-                    : '';
-                // 有配股時拆解現金／配股，否則只顯示現金配息
-                final breakdown = (pt != null && pt.stock > 0)
-                    ? '現金 \$${pt.cash.toStringAsFixed(2)} ＋配股 \$${pt.stock.toStringAsFixed(2)}\n合計 \$${pt.total.toStringAsFixed(2)}'
-                    : '配息 \$${s.y.toStringAsFixed(2)}';
-                return LineTooltipItem(
-                  '$dateLabel$breakdown',
-                  const TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600),
-                );
-              }).toList(),
             ),
           ),
         ),
-      ),
+      ],
     );
   }
+
+  Widget _legendDot(Color c, String label) => Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 12,
+            height: 12,
+            decoration: BoxDecoration(
+              color: c,
+              borderRadius: BorderRadius.circular(3),
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text(label,
+              style: const TextStyle(
+                  fontSize: 12, color: AppTheme.textSecondary)),
+        ],
+      );
 }
