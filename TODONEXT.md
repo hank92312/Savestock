@@ -1,7 +1,65 @@
 # Savestock — 後續待辦事項 (TODONEXT)
 
-> 最後更新：2026-06-09（驗收完畢）
-> 目前進度：Phase 1–3 ✅ 主功能完成；P3 體驗優化 ✅；P4 後端補強 ✅；onboarding ✅；近一年殖利率基準＋股利直條圖（含配股分色）✅；**全功能驗收通過** ✅。下一階段：**P5 部署**。
+> 最後更新：2026-06-09（GCP 雲端部署主架構上線）
+> 目前進度：Phase 1–3 ✅ 主功能完成；P3 體驗優化 ✅；P4 後端補強 ✅；onboarding ✅；近一年殖利率基準＋股利直條圖（含配股分色）✅；全功能驗收通過 ✅；**P5 部署：GCP 主架構已上線（Cloud Run + Cloud SQL），待資料填充與前端切換** 🚧。
+
+---
+
+## 🚀 雲端部署現況與交接（2026-06-09）— 後續 AI 必讀
+
+> 平台已定案 **Google Cloud Platform**（$300 試用折抵金，70 天試用期）。詳細架構見 `APP.md` 第 7 節。
+
+### 已部署資源（GCP 專案 `savestock-app`，區域 `asia-east1`）
+
+| 資源 | 服務 | 識別 / 設定 | 狀態 |
+| --- | --- | --- | --- |
+| 後端 API | Cloud Run | `savestock-api`；512Mi；min=0/max=2；允許未驗證 | ✅ 運行中 |
+| 資料庫 | Cloud SQL PostgreSQL 15 | `savestock-db`；`db-f1-micro`；10GB SSD；無備份 | ✅ 運行中（空資料） |
+| 容器倉庫 | Artifact Registry | `savestock-repo`（Docker） | ✅ |
+| 容器建置 | Cloud Build | 遠端建置（本機無 Docker） | ✅ |
+
+- **正式 API 網址**：`https://savestock-api-62102931839.asia-east1.run.app`（`/health`、`/stocks` 已驗證 200）
+- **DB 連線**：Cloud Run 走 Unix socket（`--add-cloudsql-instances`）；`DATABASE_URL` = `postgresql+psycopg2://postgres:<pwd>@/savestock?host=/cloudsql/savestock-app:asia-east1:savestock-db`
+- **postgres 密碼**：未寫入版控（避免洩漏）；目前設於 Cloud Run 環境變數 `DATABASE_URL`，可用 `gcloud run services describe savestock-api --region=asia-east1 --format="value(spec.template.spec.containers[0].env)"` 取得。⚠️ 上線前應改強密碼並改用 Secret Manager。
+- **生產 schema**：`database/init_postgres.sql`（已匯入雲端）
+
+### 已完成的 SQLite→PostgreSQL 改寫（commit `7615669`）
+- `database/init_postgres.sql`（SERIAL/BOOLEAN/ON CONFLICT）
+- `backend/database.py`：依 `DATABASE_URL` 前綴自動切換
+- `backend/routers/stocks.py`：`Is_Default = TRUE`/`FALSE`（PostgreSQL 不接受 `boolean = integer`）
+- `backend/requirements.txt`：補 `yfinance`、`requests`
+- `backend/Dockerfile` + `.dockerignore`
+
+### 🔴 待辦（下次接續，按優先序）
+
+1. **雲端 DB 資料填充（卡點）**：本機直連 Cloud SQL 公網 IP（`34.81.109.99`）會卡住，因預設未授權網路。三種解法擇一：
+   - **Cloud SQL Auth Proxy**（推薦）：下載 proxy，本機 `DATABASE_URL` 指向 `127.0.0.1:5432` 跑 `etl/fetch_data.py`
+   - 暫時把本機 IP 加進 Cloud SQL 授權網路（`gcloud sql instances patch savestock-db --authorized-networks=<你的IP>`），跑完移除
+   - 在 Cloud Run 加一個 `/admin/seed` 端點觸發 ETL（容器內走 socket，無網路限制）
+   - ⚠️ 用 venv Python 跑 ETL：`C:\Savestock\.venv\Scripts\python.exe`（系統 Python 無 yfinance，且本機 pip 無外網）
+2. **Flutter App 改連雲端 API**：`frontend/lib/services/api_service.dart`、`user_service.dart` 的 `http://localhost:8000` → 正式網址（HTTPS）
+3. **ETL 自動排程**：Cloud Scheduler 定時觸發（盤後），API 已啟用 `cloudscheduler.googleapis.com`
+4. **CORS 收斂**：`backend/main.py` `allow_origins=["*"]` → 限定正式來源
+
+### 💰 成本提醒
+- 試用期內全部由 $300 折抵金支付。
+- 試用後預估 **~$10–15/月**（Cloud SQL `db-f1-micro` ~$7–10 為最大固定成本）。
+- **Cloud SQL 是持續計費資源**：長時間不開發可先 `gcloud sql instances patch savestock-db --activation-policy=NEVER` 停用省折抵金，要用時改 `ALWAYS`。
+- 試用期結束前評估是否改採 Local-First（最小雲端 DB 只存 Users/Subscriptions + 裝置端 sqflite）。
+
+### 🔑 常用部署指令
+```powershell
+# 重新 build + 部署（改後端後）
+gcloud builds submit "C:\Savestock\backend" --tag=asia-east1-docker.pkg.dev/savestock-app/savestock-repo/savestock-api:latest --project=savestock-app
+# deploy 指令含密碼，需在 Google Cloud SDK Shell 手動執行（見 APP.md 第 7 節）
+
+# 看 Cloud Run 錯誤 log
+gcloud logging read "resource.type=cloud_run_revision AND resource.labels.service_name=savestock-api AND severity>=ERROR" --project=savestock-app --limit=20 --format="value(textPayload)"
+
+# 停用/啟用 Cloud SQL（省折抵金）
+gcloud sql instances patch savestock-db --activation-policy=NEVER --project=savestock-app   # 停
+gcloud sql instances patch savestock-db --activation-policy=ALWAYS --project=savestock-app  # 開
+```
 
 ---
 
@@ -131,7 +189,7 @@
   3. **警示**在防什麼（暴跌／爆量＝避開高殖利率陷阱）
   4. ⚠️ **免責聲明**（非投資建議）— 金融類 App 必備
 
-### 後端託管方案比較（待你決定，先不動手）
+### 後端託管方案比較（✅ 已定案：GCP — 見本文件最上方「雲端部署現況」；下表保留作歷史參考）
 
 | 平台 | 月成本 | 管理／維運方式 | ETL 排程 | 優點 | 缺點 / 注意 |
 |------|--------|----------------|----------|------|-------------|
