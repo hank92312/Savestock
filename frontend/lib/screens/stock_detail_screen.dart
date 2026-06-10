@@ -38,6 +38,7 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
     {'label': '半年', 'months': 6},
     {'label': '1年',  'months': 12},
     {'label': '2年',  'months': 24},
+    {'label': '5年',  'months': 60},
   ];
 
   @override
@@ -301,7 +302,12 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
               ],
             ),
             const SizedBox(height: 12),
-            _DividendChart(dividends: _dividends, error: _divError),
+            _DividendChart(
+              dividends: _dividends,
+              error: _divError,
+              listingMonths: widget.stock.listingMonths,
+              selectedMonths: _selectedDivMonths,
+            ),
           ],
         ),
       ),
@@ -834,7 +840,14 @@ class _ChartPlaceholder extends StatelessWidget {
 class _DividendChart extends StatelessWidget {
   final List<DividendPoint>? dividends;
   final String? error;
-  const _DividendChart({this.dividends, this.error});
+  final int? listingMonths;
+  final int selectedMonths;
+  const _DividendChart({
+    this.dividends,
+    this.error,
+    this.listingMonths,
+    this.selectedMonths = 24,
+  });
 
   static const Color _cashColor = Color(0xFF4FC3F7); // 淺藍＝現金股利
   static const Color _stockColor = Color(0xFF7E57C2); // 深紫＝股票股利
@@ -874,6 +887,9 @@ class _DividendChart extends StatelessWidget {
         ],
       );
     }).toList();
+
+    final bool show5yCaveat =
+        selectedMonths == 60 && listingMonths != null && listingMonths! < 60;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -977,6 +993,24 @@ class _DividendChart extends StatelessWidget {
             ),
           ),
         ),
+        if (show5yCaveat) ...[
+          const SizedBox(height: 8),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(Icons.info_outline_rounded,
+                  size: 14, color: AppTheme.textSecondary),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  '此股上市約 $listingMonths 個月，資料未滿 5 年，圖表僅顯示上市迄今紀錄',
+                  style: const TextStyle(
+                      fontSize: 12, color: AppTheme.textSecondary, height: 1.4),
+                ),
+              ),
+            ],
+          ),
+        ],
       ],
     );
   }
