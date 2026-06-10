@@ -50,8 +50,7 @@ class SearchCandidate {
 }
 
 class ApiService {
-  // 開發時指向本機；打包前改為正式主機 URL
-  static const String _base = 'http://localhost:8000';
+  static const String _base = 'https://savestock-api-62102931839.asia-east1.run.app';
 
   static Future<List<Stock>> fetchDefaultStocks() async {
     final res = await http.get(Uri.parse('$_base/stocks/'));

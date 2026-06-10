@@ -6,7 +6,7 @@ import 'package:http/http.dart' as http;
 class UserService {
   static const _keyUserId = 'user_id';
   static const _keyUuid = 'user_uuid';
-  static const String _base = 'http://localhost:8000';
+  static const String _base = 'https://savestock-api-62102931839.asia-east1.run.app';
 
   static Future<int> getOrCreateUserId() async {
     final prefs = await SharedPreferences.getInstance();
