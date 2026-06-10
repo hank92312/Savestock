@@ -25,16 +25,17 @@ def create_user(body: CreateUserRequest, conn=Depends(get_db)):
         {"uuid": body.uuid},
     ).fetchone()
     if existing:
-        return {"user_id": existing.User_ID, "uuid": body.uuid, "created": False}
+        return {"user_id": existing._mapping.get("user_id"), "uuid": body.uuid, "created": False}
 
     result = conn.execute(
         text("""
             INSERT INTO Users (UUID, Email, OAuth_Provider)
             VALUES (:uuid, :email, :provider)
+            RETURNING User_ID
         """),
         {"uuid": body.uuid, "email": body.email, "provider": body.oauth_provider},
     )
-    user_id = result.lastrowid
+    user_id = result.fetchone()[0]
     conn.execute(
         text("INSERT INTO User_Licenses (User_ID, Tier_ID) VALUES (:uid, 1)"),
         {"uid": user_id},
@@ -65,20 +66,23 @@ def get_watchlist(user_id: int, conn=Depends(get_db)):
 
     result = []
     for r in rows:
-        close, avg_div, div_1y = r.Close_Price, r.Avg_Dividend_2Y, r.Dividend_1Y
+        m = r._mapping
+        close = m.get("close_price")
+        avg_div = m.get("avg_dividend_2y")
+        div_1y = m.get("dividend_1y")
         result.append({
-            "stock_id": r.Stock_ID,
-            "name": r.Name,
-            "sector": r.Sector,
+            "stock_id": m.get("stock_id"),
+            "name": m.get("name"),
+            "sector": m.get("sector"),
             "avg_dividend_2y": avg_div,
             "dividend_1y": div_1y,
-            "listing_months": r.Listing_Months,
+            "listing_months": m.get("listing_months"),
             "close_price": close,
             "estimated_yield": round(avg_div / close * 100, 2) if close and avg_div else None,
             "yield_1y": round(div_1y / close * 100, 2) if close and div_1y else None,
-            "alert_flag": bool(r.Alert_Flag),
-            "alert_reason": r.Alert_Reason,
-            "last_date": str(r.Date) if r.Date else None,
+            "alert_flag": bool(m.get("alert_flag")),
+            "alert_reason": m.get("alert_reason"),
+            "last_date": str(m.get("date")) if m.get("date") else None,
         })
     return result
 
@@ -100,7 +104,7 @@ def add_to_watchlist(user_id: int, body: AddStockRequest, conn=Depends(get_db)):
         {"uid": user_id, "sid": body.stock_id},
     ).fetchone()
     if existing:
-        if existing.Status == "Active":
+        if existing._mapping.get("status") == "Active":
             raise HTTPException(status_code=409, detail="Stock already in watchlist")
         conn.execute(
             text("UPDATE User_Stocks SET Status = 'Active' WHERE User_ID = :uid AND Stock_ID = :sid"),
@@ -111,7 +115,7 @@ def add_to_watchlist(user_id: int, body: AddStockRequest, conn=Depends(get_db)):
     # 確認自選股數量未超過方案上限
     custom_count = conn.execute(text("""
         SELECT COUNT(*) FROM User_Stocks
-        WHERE User_ID = :uid AND Is_Default = 0 AND Status = 'Active'
+        WHERE User_ID = :uid AND Is_Default = FALSE AND Status = 'Active'
     """), {"uid": user_id}).scalar()
 
     tier_limit = conn.execute(text("""
@@ -169,7 +173,7 @@ def refresh_watchlist(user_id: int, conn=Depends(get_db)):
     errors = []
     for r in rows:
         try:
-            data = _fetch_and_upsert(r.Stock_ID, conn)
+            data = _fetch_and_upsert(r._mapping.get("stock_id"), conn)
             if data:
                 results.append(data)
         except Exception as e:
