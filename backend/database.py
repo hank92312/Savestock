@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', '.env'))
 
 DEFAULT_DB = "sqlite:///c:/Savestock/savestock.db"
-DB_URL = os.getenv("DATABASE_URL", DEFAULT_DB)
+DB_URL = os.getenv("DATABASE_URL", DEFAULT_DB).strip()
 
 # SQLite 需要 check_same_thread=False；PostgreSQL 不需要
 if DB_URL.startswith("sqlite"):
