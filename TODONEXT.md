@@ -1,7 +1,7 @@
 # Savestock — 後續待辦事項 (TODONEXT)
 
-> 最後更新：2026-06-10（MVP 完整上線，手機端對端驗證通過）
-> 目前進度：Phase 1–3 ✅ 主功能完成；P3 體驗優化 ✅；P4 後端補強 ✅；onboarding ✅；近一年殖利率基準＋股利直條圖（含配股分色）✅；全功能驗收通過 ✅；**P5 部署 ✅：Cloud Run + Cloud SQL + Netlify 全上線，手機驗證通過。ETL 排程待設定**。
+> 最後更新：2026-06-10（MVP 完整上線 + UI 美化 + ETL bug 修復）
+> 目前進度：Phase 1–3 ✅；P3 體驗優化 ✅；P4 後端補強 ✅；P5 部署 ✅；UI 美化 ✅；ETL bug 修復 ✅（聯邦銀近1年股利、永豐金股利圖）。**ETL 自動排程待設定**。
 
 ---
 
@@ -86,6 +86,41 @@ gcloud sql instances patch savestock-db --activation-policy=ALWAYS --project=sav
 # Set-Location C:\Savestock; .venv\Scripts\python.exe etl\fetch_data.py
 # 密碼查詢：gcloud secrets versions access latest --secret="savestock-db-url" --project=savestock-app
 ```
+
+---
+
+## ⚠️ 技術債：ETL 與後端股利計算邏輯並行維護
+
+> **狀態：已知，暫不重構，下次動到股利計算時必讀**
+
+ETL（`etl/fetch_data.py`）與後端（`backend/routers/stocks.py`）各自獨立實作了股利計算邏輯，目前已人工對齊，但未來若任一邊修改，**兩邊都必須同步更新**。
+
+| 邏輯 | ETL | 後端 |
+|------|-----|------|
+| 近1年股利（`dividend_1y`） | `fetch_stock_data()` 內 for 迴圈 | `_dividend_1y()` |
+| 2年/5年均股利 | `_calc_avg()` | `_total_div_series()` |
+| Dividends 表寫入 | `save_to_db()` 第 3 段 | `_upsert_dividends()` |
+
+**根因（已發生過的事故）**：
+- 2026-06-10：ETL `save_to_db` 從未寫 Dividends 表 → 新增 11 檔無股利圖（已修）
+- 2026-06-10：ETL `dividend_1y` 只算現金，漏掉 `Stock Splits` 配股 → 聯邦銀 1.05 顯示 0.35（已修）
+
+**修復方式**：對齊後端口徑後，呼叫 `POST /stocks/refresh` 一次修正 Cloud SQL（不需 Proxy）。
+
+---
+
+## ✅ 今日完成項目（2026-06-10 第二次）
+
+- [x] **ETL bug 修復（股利口徑）**：`etl/fetch_data.py` 兩處邏輯對齊後端：
+  - `dividend_1y` 納入配股（`(ratio-1)*10`）→ 聯邦銀 0.35 → 1.05 修正
+  - `save_to_db` 補寫 Dividends 表 → 永豐金等 11 新增股股利圖有資料
+- [x] **Cloud SQL 修復驗證**：`POST /stocks/refresh` 重跑後驗證 2838=1.05 ✅、抽查 2884/00713/9917/2633/5880 股利列數正常 ✅
+- [x] **預設股 14 → 25 檔**：新增 11 檔；以台灣高鐵（2633）替換光寶科（2301）；已同步 Cloud SQL
+- [x] **股利直條圖加「近5年」選項**：不足5年顯示提示文字
+- [x] **onboarding 加第 4 頁（搜尋功能說明）**（4頁→5頁）
+- [x] **首頁問號圖示改 TextButton.icon「使用教學」**：手機上直觀可見
+- [x] **UI 美化**：卡片陰影（`AppTheme.cardDecoration`）、產業標籤改膠囊型、殖利率高亮膠囊（依高低分色）
+- [x] **Netlify 部署修復**：從手動上傳改用 Netlify CLI（`flutter_bootstrap.js 404` 問題根治）
 
 ---
 

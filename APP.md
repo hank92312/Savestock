@@ -1,6 +1,6 @@
 # 專案架構文件：Savestock（長線存股防護系統）
 
-> 最後更新：2026-06-10
+> 最後更新：2026-06-10（UI 美化 + ETL bug 修復 + 預設股擴充至 25 檔）
 > 本文件為專案的單一入口參考：看完即可掌握整體內容與架構。
 > 細部待辦與部署決策見 [TODONEXT.md](TODONEXT.md)。
 > 雲端部署現況見 [第 7 節](#7-雲端部署現況gcp)。
@@ -42,7 +42,7 @@ Yahoo 財經 ──(yfinance)──> ETL 批次運算 ──> savestock.db
 ## 3. 系統元件詳解
 
 ### 3.1 ETL（`etl/fetch_data.py`）
-* 固定追蹤 **14 檔預設股**（清單寫死於 `TARGET_STOCKS`，不依賴 yfinance 的 sector 欄位）。
+* 固定追蹤 **25 檔預設股**（清單寫死於 `TARGET_STOCKS`，不依賴 yfinance 的 sector 欄位）。
 * 每檔抓 **1 年歷史收盤價**（約 245 筆）寫入 `Daily_Prices`，`Is_Default=1`。
 * 計算並寫入 `Stock_Master`：平均股利、`Listing_Months`（上市月數）、`Default_Drop_Threshold`（產業閾值）。
 * 目前**手動執行**；伺服器自動排程留待 P5 部署。
@@ -146,11 +146,15 @@ Yahoo 財經 ──(yfinance)──> ETL 批次運算 ──> savestock.db
 ## 6. 開發進度
 
 ### ✅ 已完成
-* 資料庫、ETL（產業別警示、1 年歷史、新上市年化、產業閾值寫入）。
+* 資料庫、ETL（產業別警示、1 年歷史、新上市年化、產業閾值寫入、Dividends 表寫入、配股口徑修正）。
 * 後端 12 支端點（搜尋/lookup/prices/自選 CRUD/refresh，清單與自選皆殖利率排序）。
-* Flutter 全畫面：首頁、我的股票、查詢、詳情、**教學導覽**。
+* Flutter 全畫面：首頁、我的股票、查詢、詳情、**教學導覽（5頁含搜尋說明）**。
 * 體驗優化（P3）：下拉刷新、已追蹤標記、上限友善提示、滑鼠拖曳、圖表日期、刪除鈕。
-* 詳情頁「加入我的股票」書籤鈕＋跨畫面即時同步；股票名稱統一中文（搜尋快取優先）；股價顯示至小數點 2 位。
+* 詳情頁「加入我的股票」書籤鈕＋跨畫面即時同步；股票名稱統一中文；股價顯示至小數點 2 位。
+* UI 美化：卡片陰影（`AppTheme.cardDecoration`）、產業標籤膠囊型、殖利率分色高亮膠囊。
+* 預設股擴充至 **25 檔**（台灣高鐵 2633 替換光寶科 2301）；ETL 全量同步至 Cloud SQL。
+* 股利直條圖加「近5年」選項；不足5年自動顯示提示文字。
+* 首頁「使用教學」按鈕加文字（手機可見）。
 
 ### ⏳ 待辦
 * **ETL 自動排程**：Cloud Scheduler 每日盤後觸發（詳見 TODONEXT）。
@@ -189,7 +193,7 @@ Yahoo 財經 ──(yfinance)──> ETL 批次運算 ──> savestock.db
 
 | 項目 | 狀態 |
 | --- | --- |
-| 雲端 DB 資料填充（14 檔預設股） | ✅ 完成 |
+| 雲端 DB 資料填充（25 檔預設股） | ✅ 完成 |
 | Flutter App baseUrl 換雲端 API | ✅ `api_service.dart`、`user_service.dart` 已改 |
 | CORS 收斂 | ✅ `allow_origins=["https://savestock.netlify.app"]` |
 | Secret Manager（DATABASE_URL） | ✅ `savestock-db-url` version 2 active |
