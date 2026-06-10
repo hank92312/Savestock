@@ -1,7 +1,7 @@
 # Savestock — 後續待辦事項 (TODONEXT)
 
-> 最後更新：2026-06-09（GCP 雲端部署主架構上線）
-> 目前進度：Phase 1–3 ✅ 主功能完成；P3 體驗優化 ✅；P4 後端補強 ✅；onboarding ✅；近一年殖利率基準＋股利直條圖（含配股分色）✅；全功能驗收通過 ✅；**P5 部署：GCP 主架構已上線（Cloud Run + Cloud SQL），待資料填充與前端切換** 🚧。
+> 最後更新：2026-06-10（MVP 完整上線，手機端對端驗證通過）
+> 目前進度：Phase 1–3 ✅ 主功能完成；P3 體驗優化 ✅；P4 後端補強 ✅；onboarding ✅；近一年殖利率基準＋股利直條圖（含配股分色）✅；全功能驗收通過 ✅；**P5 部署 ✅：Cloud Run + Cloud SQL + Netlify 全上線，手機驗證通過。ETL 排程待設定**。
 
 ---
 
@@ -14,13 +14,13 @@
 | 資源 | 服務 | 識別 / 設定 | 狀態 |
 | --- | --- | --- | --- |
 | 後端 API | Cloud Run | `savestock-api`；512Mi；min=0/max=2；允許未驗證 | ✅ 運行中 |
-| 資料庫 | Cloud SQL PostgreSQL 15 | `savestock-db`；`db-f1-micro`；10GB SSD；無備份 | ✅ 運行中（空資料） |
+| 資料庫 | Cloud SQL PostgreSQL 15 | `savestock-db`；`db-f1-micro`；10GB SSD；無備份 | ✅ 運行中（14 檔資料已填入） |
 | 容器倉庫 | Artifact Registry | `savestock-repo`（Docker） | ✅ |
 | 容器建置 | Cloud Build | 遠端建置（本機無 Docker） | ✅ |
 
 - **正式 API 網址**：`https://savestock-api-62102931839.asia-east1.run.app`（`/health`、`/stocks` 已驗證 200）
-- **DB 連線**：Cloud Run 走 Unix socket（`--add-cloudsql-instances`）；`DATABASE_URL` = `postgresql+psycopg2://postgres:<pwd>@/savestock?host=/cloudsql/savestock-app:asia-east1:savestock-db`
-- **postgres 密碼**：未寫入版控（避免洩漏）；目前設於 Cloud Run 環境變數 `DATABASE_URL`，可用 `gcloud run services describe savestock-api --region=asia-east1 --format="value(spec.template.spec.containers[0].env)"` 取得。⚠️ 上線前應改強密碼並改用 Secret Manager。
+- **DB 連線**：Cloud Run 走 Unix socket（`--add-cloudsql-instances`）；`DATABASE_URL` 透過 **GCP Secret Manager** 注入（secret `savestock-db-url`，version 2 為 active latest；`.strip()` 已加入 `database.py` 防換行問題）。
+- **postgres 密碼**：未寫入版控；存於 Secret Manager `savestock-db-url`，Cloud Run 以 `--set-secrets="DATABASE_URL=savestock-db-url:latest"` 取得。
 - **生產 schema**：`database/init_postgres.sql`（已匯入雲端）
 
 ### 已完成的 SQLite→PostgreSQL 改寫（commit `7615669`）
@@ -30,16 +30,26 @@
 - `backend/requirements.txt`：補 `yfinance`、`requests`
 - `backend/Dockerfile` + `.dockerignore`
 
-### 🔴 待辦（下次接續，按優先序）
+### ✅ P5 部署（2026-06-10 全部完成）
 
-1. **雲端 DB 資料填充（卡點）**：本機直連 Cloud SQL 公網 IP（`34.81.109.99`）會卡住，因預設未授權網路。三種解法擇一：
-   - **Cloud SQL Auth Proxy**（推薦）：下載 proxy，本機 `DATABASE_URL` 指向 `127.0.0.1:5432` 跑 `etl/fetch_data.py`
-   - 暫時把本機 IP 加進 Cloud SQL 授權網路（`gcloud sql instances patch savestock-db --authorized-networks=<你的IP>`），跑完移除
-   - 在 Cloud Run 加一個 `/admin/seed` 端點觸發 ETL（容器內走 socket，無網路限制）
-   - ⚠️ 用 venv Python 跑 ETL：`C:\Savestock\.venv\Scripts\python.exe`（系統 Python 無 yfinance，且本機 pip 無外網）
-2. **Flutter App 改連雲端 API**：`frontend/lib/services/api_service.dart`、`user_service.dart` 的 `http://localhost:8000` → 正式網址（HTTPS）
-3. **ETL 自動排程**：Cloud Scheduler 定時觸發（盤後），API 已啟用 `cloudscheduler.googleapis.com`
-4. **CORS 收斂**：`backend/main.py` `allow_origins=["*"]` → 限定正式來源
+1. ~~**雲端 DB 資料填充**~~ ✅ 14 檔預設股資料已填入，手機驗證回傳正常
+2. ~~**Flutter App 改連雲端 API**~~ ✅ `api_service.dart`、`user_service.dart` 已改為 `https://savestock-api-62102931839.asia-east1.run.app`
+3. ~~**CORS 收斂**~~ ✅ `allow_origins=["https://savestock.netlify.app"]`
+4. ~~**Secret Manager**~~ ✅ `DATABASE_URL` 存入 `savestock-db-url`，Cloud Run 以 `--set-secrets` 注入
+5. ~~**Flutter Web 打包部署**~~ ✅ 部署至 Netlify：`https://savestock.netlify.app`
+
+### 🔴 剩餘待辦（按優先序）
+
+1. **ETL 自動排程（Cloud Scheduler）**：每日盤後自動更新股票資料。Cloud Scheduler 已啟用，待建立工作（詳見下方指令）。
+   ```bash
+   gcloud scheduler jobs create http savestock-etl-daily \
+     --location=asia-east1 \
+     --schedule="0 15 * * 1-5" \
+     --uri="https://savestock-api-62102931839.asia-east1.run.app/stocks/refresh" \
+     --http-method=POST \
+     --time-zone="Asia/Taipei"
+   ```
+   > ⚠️ `/stocks/refresh` 目前只更新預設股。若要 ETL 全量（含 Dividends、Listing_Months 等），需另建 `/admin/etl` 端點或改以 Cloud Run Job 執行 `etl/fetch_data.py`。
 
 ### 💰 成本提醒
 - 試用期內全部由 $300 折抵金支付。
@@ -60,6 +70,22 @@ gcloud logging read "resource.type=cloud_run_revision AND resource.labels.servic
 gcloud sql instances patch savestock-db --activation-policy=NEVER --project=savestock-app   # 停
 gcloud sql instances patch savestock-db --activation-policy=ALWAYS --project=savestock-app  # 開
 ```
+
+---
+
+## ✅ 今日完成項目（2026-06-10）
+
+- [x] **Flutter App baseUrl 切換雲端**：`api_service.dart`、`user_service.dart` 全改為 `https://savestock-api-62102931839.asia-east1.run.app`
+- [x] **CORS 收斂**：`backend/main.py` `allow_origins=["https://savestock.netlify.app"]`
+- [x] **Secret Manager**：`DATABASE_URL` 存入 GCP Secret Manager（`savestock-db-url` version 2 active）；`database.py` 加 `.strip()` 防換行；Cloud Run 以 `--set-secrets` 注入，不再明文寫入環境變數
+- [x] **tools/ gitignore**：避免本機工具二進位檔進版控
+- [x] **PostgreSQL 相容性修正**（`routers/users.py`）：
+  - `RETURNING User_ID` + `result.fetchone()[0]`（取代 SQLite 的 `lastrowid`）
+  - 所有 row 存取改 `r._mapping.get("欄位名")`（PostgreSQL text() 欄位名折小寫）
+  - `Is_Default = FALSE` 取代整數 `0`（PostgreSQL boolean 嚴格型別）
+- [x] **Flutter Web 部署 Netlify**：打包 `frontend/build/web`，部署至 `https://savestock.netlify.app`
+- [x] **手機端對端驗證**：首頁 14 檔、詳情頁圖表、搜尋、自選加入/移除全部正常
+- [x] **架構決策**：維持現有 Cloud SQL MVP 試運行（保留跨裝置同步能力）；localStorage 方案保留為未來選項
 
 ---
 

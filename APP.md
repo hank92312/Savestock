@@ -1,6 +1,6 @@
 # 專案架構文件：Savestock（長線存股防護系統）
 
-> 最後更新：2026-06-09
+> 最後更新：2026-06-10
 > 本文件為專案的單一入口參考：看完即可掌握整體內容與架構。
 > 細部待辦與部署決策見 [TODONEXT.md](TODONEXT.md)。
 > 雲端部署現況見 [第 7 節](#7-雲端部署現況gcp)。
@@ -48,7 +48,7 @@ Yahoo 財經 ──(yfinance)──> ETL 批次運算 ──> savestock.db
 * 目前**手動執行**；伺服器自動排程留待 P5 部署。
 
 ### 3.2 後端 API（`backend/`）
-* 入口 `main.py`（CORS 目前 `*`）、`database.py`（`engine` + `get_db()`，以 `engine.begin()` 自動 commit/rollback）。
+* 入口 `main.py`（CORS `allow_origins=["https://savestock.netlify.app"]`）、`database.py`（`engine` + `get_db()`，以 `engine.begin()` 自動 commit/rollback；`.strip()` 防 Secret Manager 換行）。
 * 路由：`routers/stocks.py`、`routers/users.py`。
 
 | Method | 路徑 | 說明 |
@@ -153,9 +153,9 @@ Yahoo 財經 ──(yfinance)──> ETL 批次運算 ──> savestock.db
 * 詳情頁「加入我的股票」書籤鈕＋跨畫面即時同步；股票名稱統一中文（搜尋快取優先）；股價顯示至小數點 2 位。
 
 ### ⏳ 待辦
-* **P5 生產上線**：見第 7 節與 TODONEXT。
-* 釐清免費方案自選上限（種子值不一致）。
-* 通知系統接線。
+* **ETL 自動排程**：Cloud Scheduler 每日盤後觸發（詳見 TODONEXT）。
+* 通知系統接線（`User_Preferences` 已備欄位）。
+* 評估試用期後是否續用 Cloud SQL（~$9/月）或改 Local-First 架構。
 
 ---
 
@@ -173,7 +173,8 @@ Yahoo 財經 ──(yfinance)──> ETL 批次運算 ──> savestock.db
 | 容器建置 | **Cloud Build** | 遠端建置（本機未裝 Docker）；image tag `savestock-api:latest` |
 
 * **正式 API 網址**：`https://savestock-api-62102931839.asia-east1.run.app`
-* **DB 連線**：Cloud Run 透過 Unix socket 連 Cloud SQL（`--add-cloudsql-instances`），`DATABASE_URL` 走 `host=/cloudsql/savestock-app:asia-east1:savestock-db`。
+* **前端網址**：`https://savestock.netlify.app`（Flutter Web，Netlify 靜態托管）
+* **DB 連線**：Cloud Run 透過 Unix socket 連 Cloud SQL（`--add-cloudsql-instances`），`DATABASE_URL` 由 **GCP Secret Manager**（`savestock-db-url`）注入（`--set-secrets`），不寫入環境變數明文。
 * **容器化檔案**：`backend/Dockerfile`（python:3.11-slim + libpq）、`backend/.dockerignore`。
 * **健康檢查**：`/health` 已驗證回 `{"status":"healthy"}`；`/stocks` 已驗證回 200（空陣列，待資料填充）。
 
@@ -184,12 +185,17 @@ Yahoo 財經 ──(yfinance)──> ETL 批次運算 ──> savestock.db
 * `backend/routers/stocks.py`：布林比較改 `Is_Default = TRUE`、寫入改 `FALSE`（PostgreSQL 不接受 `boolean = integer`）。
 * `backend/requirements.txt`：補上 `yfinance`、`requests`（Cloud Run 容器缺套件會啟動失敗）。
 
-### 7.3 待辦（下次接續）
+### 7.3 P5 部署完成狀況（2026-06-10）
 
-1. **雲端 DB 資料填充**：本機直連 Cloud SQL 公網 IP 會卡住（預設未授權網路）。改用 **Cloud SQL Auth Proxy** 或暫時加白名單跑 `etl/fetch_data.py`，或改為 Cloud Run 內建一個 `/admin/seed` 端點觸發。
-2. **Flutter App 改連雲端 API**：`services/api_service.dart` 的 base URL 由 `localhost:8000` 換成正式網址。
-3. **ETL 自動排程**：Cloud Scheduler 定時觸發（盤後）。
-4. **CORS 收斂**：目前 `allow_origins=["*"]`，上線前限定來源。
+| 項目 | 狀態 |
+| --- | --- |
+| 雲端 DB 資料填充（14 檔預設股） | ✅ 完成 |
+| Flutter App baseUrl 換雲端 API | ✅ `api_service.dart`、`user_service.dart` 已改 |
+| CORS 收斂 | ✅ `allow_origins=["https://savestock.netlify.app"]` |
+| Secret Manager（DATABASE_URL） | ✅ `savestock-db-url` version 2 active |
+| Flutter Web 部署 Netlify | ✅ `https://savestock.netlify.app` |
+| 手機端對端驗證 | ✅ 全功能通過 |
+| **ETL 自動排程（Cloud Scheduler）** | 🔴 **待辦**（見 TODONEXT） |
 
 ### 7.4 成本提醒
 
