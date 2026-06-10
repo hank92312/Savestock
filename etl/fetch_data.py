@@ -153,9 +153,9 @@ def fetch_stock_data(stock_id: str, name: str, sector: str):
         "stock_id":        stock_id,
         "name":            name,
         "sector":          sector,
-        "avg_dividend_2y": combined_dividend,
-        "avg_dividend_5y": avg_dividend_5y,
-        "dividend_1y":     dividend_1y,
+        "avg_dividend_2y": float(combined_dividend),   # numpy float64 → Python float
+        "avg_dividend_5y": float(avg_dividend_5y),
+        "dividend_1y":     float(dividend_1y),
         "listing_months":  listing_months,
         "drop_threshold":  SECTOR_THRESHOLDS.get(sector, 0.04),
         "price_rows":      price_rows,
@@ -169,7 +169,7 @@ def save_to_db(data):
         # 1. 更新 Stock_Master
         upsert_stock_master = text("""
             INSERT INTO Stock_Master (Stock_ID, Name, Sector, Avg_Dividend_2Y, Avg_Dividend_5Y, Dividend_1Y, Default_Drop_Threshold, Listing_Months, Is_Default, Last_Updated)
-            VALUES (:sid, :name, :sector, :avg_div, :avg_div_5y, :div_1y, :drop_threshold, :listing_months, 1, CURRENT_TIMESTAMP)
+            VALUES (:sid, :name, :sector, :avg_div, :avg_div_5y, :div_1y, :drop_threshold, :listing_months, TRUE, CURRENT_TIMESTAMP)
             ON CONFLICT (Stock_ID) DO UPDATE SET
                 Name = EXCLUDED.Name,
                 Sector = EXCLUDED.Sector,
@@ -178,7 +178,7 @@ def save_to_db(data):
                 Dividend_1Y = EXCLUDED.Dividend_1Y,
                 Default_Drop_Threshold = EXCLUDED.Default_Drop_Threshold,
                 Listing_Months = EXCLUDED.Listing_Months,
-                Is_Default = 1,
+                Is_Default = TRUE,
                 Last_Updated = CURRENT_TIMESTAMP;
         """)
         conn.execute(upsert_stock_master, {
@@ -212,7 +212,7 @@ def save_to_db(data):
             else:
                 conn.execute(text("""
                     INSERT INTO Daily_Prices (Stock_ID, Date, Close_Price, Volume, Alert_Flag, Alert_Reason)
-                    VALUES (:sid, :date, :close, :volume, 0, '')
+                    VALUES (:sid, :date, :close, :volume, FALSE, '')
                     ON CONFLICT (Stock_ID, Date) DO NOTHING;
                 """), {"sid": data['stock_id'], "date": pr['date'],
                        "close": pr['close'], "volume": pr['volume']})

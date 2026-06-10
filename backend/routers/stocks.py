@@ -120,28 +120,29 @@ _SM_COLS = "sm.Stock_ID, sm.Name, sm.Sector, sm.Avg_Dividend_2Y, sm.Avg_Dividend
 
 
 def _row_to_dict(row):
-    close = row.Close_Price
-    avg_div = row.Avg_Dividend_2Y
-    avg_div_5y = row.Avg_Dividend_5Y
-    div_1y = row.Dividend_1Y
+    m = row._mapping  # 統一用 mapping 存取，SQLite/PostgreSQL 皆相容（小寫 key）
+    close = m.get("close_price")
+    avg_div = m.get("avg_dividend_2y")
+    avg_div_5y = m.get("avg_dividend_5y")
+    div_1y = m.get("dividend_1y")
     yield_est = round(avg_div / close * 100, 2) if close and avg_div else None
     yield_1y = round(div_1y / close * 100, 2) if close and div_1y else None
     yield_5y = round(avg_div_5y / close * 100, 2) if close and avg_div_5y else None
     return {
-        "stock_id": row.Stock_ID,
-        "name": row.Name,
-        "sector": row.Sector,
+        "stock_id": m.get("stock_id"),
+        "name": m.get("name"),
+        "sector": m.get("sector"),
         "avg_dividend_2y": avg_div,
         "avg_dividend_5y": avg_div_5y,
         "dividend_1y": div_1y,
-        "listing_months": row.Listing_Months,
+        "listing_months": m.get("listing_months"),
         "close_price": close,
         "estimated_yield": yield_est,
         "yield_1y": yield_1y,
         "yield_5y": yield_5y,
-        "alert_flag": bool(row.Alert_Flag),
-        "alert_reason": row.Alert_Reason,
-        "last_date": str(row.Date) if row.Date else None,
+        "alert_flag": bool(m.get("alert_flag")),
+        "alert_reason": m.get("alert_reason"),
+        "last_date": str(m.get("date")) if m.get("date") else None,
     }
 
 
@@ -273,11 +274,11 @@ def _fetch_and_upsert(sid: str, conn) -> dict | None:
         text("SELECT Name, Sector, Default_Drop_Threshold FROM Stock_Master WHERE Stock_ID = :sid"),
         {"sid": sid},
     ).fetchone()
-    sector = existing.Sector if existing else "Unknown"
+    sector = existing.sector if existing else "Unknown"
 
     code_only = sid.replace(".TWO", "").replace(".TW", "")
     if existing:
-        name = existing.Name
+        name = existing.name
         # 既有名稱若非中文（早期抓取退回了英文名），嘗試升級為正確中文名
         if not _has_chinese(name):
             name = _resolve_chinese_name(code_only) or name
@@ -304,8 +305,8 @@ def _fetch_and_upsert(sid: str, conn) -> dict | None:
     vol_ratio = volume / avg_vol_20d if avg_vol_20d > 0 else 1
     alert_reasons = []
     # 預設股用其產業別閾值（已存於 Default_Drop_Threshold）；無紀錄者預設 3%
-    drop_pct = (existing.Default_Drop_Threshold
-                if existing and existing.Default_Drop_Threshold else 0.03) * 100
+    drop_pct = (existing.default_drop_threshold
+                if existing and existing.default_drop_threshold else 0.03) * 100
     if price_change <= -drop_pct:
         alert_reasons.append(f"跌幅:{price_change:.2f}%")
     if vol_ratio >= 2.5:
@@ -342,7 +343,7 @@ def _fetch_and_upsert(sid: str, conn) -> dict | None:
         try:
             conn.execute(text("""
                 INSERT INTO Daily_Prices (Stock_ID, Date, Close_Price, Volume, Alert_Flag, Alert_Reason)
-                VALUES (:sid, :date, :close, :volume, 0, '')
+                VALUES (:sid, :date, :close, :volume, FALSE, '')
                 ON CONFLICT (Stock_ID, Date) DO NOTHING
             """), {"sid": sid, "date": ts.date(),
                    "close": float(row["Close"]), "volume": int(row["Volume"])})
@@ -399,7 +400,7 @@ def refresh_default_stocks(conn=Depends(get_db)):
     results = []
     for r in rows:
         try:
-            data = _fetch_and_upsert(r.Stock_ID, conn)
+            data = _fetch_and_upsert(r.stock_id, conn)
             if data:
                 results.append(data)
         except Exception:
@@ -457,7 +458,7 @@ def lookup_stock(stock_id: str, conn=Depends(get_db)):
             {"q": f"%{query}%"},
         ).fetchone()
         if row:
-            sid = row.Stock_ID
+            sid = row.stock_id
         else:
             # 2. 向快取查名稱對應代號
             code = _search_tw_code_by_name(query)
@@ -525,11 +526,11 @@ def get_stock_prices(
 
     return [
         {
-            "date": str(r.Date),
-            "close_price": r.Close_Price,
-            "volume": r.Volume,
-            "alert_flag": bool(r.Alert_Flag),
-            "alert_reason": r.Alert_Reason,
+            "date": str(r.date),
+            "close_price": r.close_price,
+            "volume": r.volume,
+            "alert_flag": bool(r.alert_flag),
+            "alert_reason": r.alert_reason,
         }
         for r in rows
     ]
@@ -559,10 +560,10 @@ def get_stock_dividends(
 
     return [
         {
-            "date": str(r.Ex_Date),
-            "cash": r.Cash_Dividend,
-            "stock": r.Stock_Dividend,
-            "total": round((r.Cash_Dividend or 0) + (r.Stock_Dividend or 0), 4),
+            "date": str(r.ex_date),
+            "cash": r.cash_dividend,
+            "stock": r.stock_dividend,
+            "total": round((r.cash_dividend or 0) + (r.stock_dividend or 0), 4),
         }
         for r in rows
     ]
