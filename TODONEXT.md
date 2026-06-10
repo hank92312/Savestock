@@ -59,6 +59,14 @@
 
 ### 🔑 常用部署指令
 ```powershell
+# ── 前端 Flutter Web → Netlify ──────────────────────────────
+# 1. 打包
+Set-Location C:\Savestock\frontend; flutter build web --release
+# 2. 部署（Netlify CLI，site ID 固定）
+Set-Location C:\Savestock\frontend\build\web
+netlify deploy --prod --dir=. --site=ebec3bc6-8ea5-4131-98b0-e08c54aaaac8
+
+# ── 後端 FastAPI → Cloud Run ────────────────────────────────
 # 重新 build + 部署（改後端後）
 gcloud builds submit "C:\Savestock\backend" --tag=asia-east1-docker.pkg.dev/savestock-app/savestock-repo/savestock-api:latest --project=savestock-app
 # deploy 指令含密碼，需在 Google Cloud SDK Shell 手動執行（見 APP.md 第 7 節）
@@ -66,9 +74,17 @@ gcloud builds submit "C:\Savestock\backend" --tag=asia-east1-docker.pkg.dev/save
 # 看 Cloud Run 錯誤 log
 gcloud logging read "resource.type=cloud_run_revision AND resource.labels.service_name=savestock-api AND severity>=ERROR" --project=savestock-app --limit=20 --format="value(textPayload)"
 
-# 停用/啟用 Cloud SQL（省折抵金）
+# ── Cloud SQL 省費開關 ───────────────────────────────────────
 gcloud sql instances patch savestock-db --activation-policy=NEVER --project=savestock-app   # 停
 gcloud sql instances patch savestock-db --activation-policy=ALWAYS --project=savestock-app  # 開
+
+# ── Cloud SQL 資料同步（本機 ETL → 雲端）────────────────────
+# 步驟 1：Google Cloud SDK Shell 啟動 Proxy（保持視窗開著）
+# C:\Savestock\tools\cloud-sql-proxy.exe savestock-app:asia-east1:savestock-db --port=5432
+# 步驟 2：新 PowerShell 視窗執行 ETL
+# $env:DATABASE_URL = "postgresql+psycopg2://postgres:【密碼】@127.0.0.1:5432/savestock"
+# Set-Location C:\Savestock; .venv\Scripts\python.exe etl\fetch_data.py
+# 密碼查詢：gcloud secrets versions access latest --secret="savestock-db-url" --project=savestock-app
 ```
 
 ---

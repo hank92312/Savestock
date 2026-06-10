@@ -232,15 +232,29 @@ Yahoo 財經 ──(yfinance)──> ETL 批次運算 ──> savestock.db
 ## 9. 啟動指令速查
 
 ```powershell
-# 1. 啟動 API
+# 1. 啟動本機 API（開發用）
 Start-Process -FilePath "c:\Savestock\.venv\Scripts\python.exe" -ArgumentList "-m","uvicorn","main:app","--port","8000" -WorkingDirectory "c:\Savestock\backend" -WindowStyle Hidden
 
-# 2. 確認 API
+# 2. 確認本機 API
 Invoke-RestMethod http://localhost:8000/health
 
-# 3. 手動執行 ETL
+# 3. 手動執行本機 ETL
 Set-Location C:\Savestock; .venv\Scripts\python.exe etl\fetch_data.py
 
-# 4. 啟動 Flutter（Web）
+# 4. 啟動 Flutter 本機預覽
 Set-Location C:\Savestock\frontend; flutter run -d chrome --web-port 5000
+
+# ── 生產部署 ────────────────────────────────────────────────
+
+# 5. 打包 + 部署前端到 Netlify
+Set-Location C:\Savestock\frontend; flutter build web --release
+Set-Location C:\Savestock\frontend\build\web
+netlify deploy --prod --dir=. --site=ebec3bc6-8ea5-4131-98b0-e08c54aaaac8
+
+# 6. 部署後端到 Cloud Run（Google Cloud SDK Shell 執行）
+# gcloud builds submit "C:\Savestock\backend" --tag=asia-east1-docker.pkg.dev/savestock-app/savestock-repo/savestock-api:latest --project=savestock-app
+# （deploy 指令含密碼，見 TODONEXT.md 常用部署指令）
+
+# 7. 同步資料到 Cloud SQL（需先啟動 Cloud SQL Auth Proxy）
+# 密碼查詢：gcloud secrets versions access latest --secret="savestock-db-url" --project=savestock-app
 ```
