@@ -45,6 +45,15 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           '喜歡的股票可加入「我的股票」持續追蹤。',
     ),
     _OnboardPage(
+      icon: Icons.search_rounded,
+      color: Color(0xFF7E57C2),
+      title: '搜尋你關注的股票',
+      body: '點首頁右上角的 🔍 搜尋，輸入代號或名稱，'
+          '即可查詢全台上市股票與 ETF。\n\n'
+          '查到後一鍵加入「我的股票」，建立專屬追蹤清單。\n\n'
+          '「我的股票」每次開啟都會自動更新最新股價與殖利率。',
+    ),
+    _OnboardPage(
       icon: Icons.warning_rounded,
       color: AppTheme.alertRed,
       title: '警示：避開高殖利率陷阱',

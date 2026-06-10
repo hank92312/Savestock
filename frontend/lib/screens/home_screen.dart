@@ -115,14 +115,18 @@ class _HomeScreenState extends State<HomeScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 8),
             ),
           ),
-          IconButton(
-            icon: const Icon(Icons.help_outline_rounded),
-            tooltip: '使用教學',
+          TextButton.icon(
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (_) => const OnboardingScreen(),
                 fullscreenDialog: true,
               ),
+            ),
+            icon: const Icon(Icons.help_outline_rounded, size: 20),
+            label: const Text('使用教學'),
+            style: TextButton.styleFrom(
+              foregroundColor: AppTheme.textSecondary,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
             ),
           ),
           const SizedBox(width: 4),

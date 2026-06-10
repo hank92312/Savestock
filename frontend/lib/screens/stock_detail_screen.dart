@@ -466,11 +466,7 @@ class _YieldHeader extends StatelessWidget {
   Widget _card({required Widget child}) => Container(
         width: double.infinity,
         padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 12),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppTheme.divider),
-        ),
+        decoration: AppTheme.cardDecoration(),
         child: child,
       );
 
@@ -531,11 +527,7 @@ class _MetricsCard extends StatelessWidget {
     final label5y = isUnder5y ? '上市以來年化股利' : '近5年平均股利';
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppTheme.divider),
-      ),
+      decoration: AppTheme.cardDecoration(radius: 12),
       child: Column(
         children: [
           Row(
@@ -706,11 +698,7 @@ class _PriceChart extends StatelessWidget {
     return Container(
       height: 220,
       padding: const EdgeInsets.only(right: 8, top: 8, bottom: 4),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppTheme.divider),
-      ),
+      decoration: AppTheme.cardDecoration(radius: 12),
       child: LineChart(
         LineChartData(
           minY: minY,
@@ -824,11 +812,7 @@ class _ChartPlaceholder extends StatelessWidget {
   Widget build(BuildContext context) => Container(
         height: 200,
         alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppTheme.divider),
-        ),
+        decoration: AppTheme.cardDecoration(radius: 12),
         child: Text(message,
             style: const TextStyle(color: AppTheme.textSecondary)),
       );
@@ -906,11 +890,7 @@ class _DividendChart extends StatelessWidget {
         Container(
           height: 220,
           padding: const EdgeInsets.only(right: 8, top: 8, bottom: 4, left: 4),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: AppTheme.divider),
-          ),
+          decoration: AppTheme.cardDecoration(radius: 12),
           child: BarChart(
             BarChartData(
               maxY: maxY,

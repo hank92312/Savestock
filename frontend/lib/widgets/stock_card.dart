@@ -21,34 +21,38 @@ class StockCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final price = stock.closePrice;
 
-    return Card(
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => StockDetailScreen(stock: stock),
+    return Container(
+      decoration: AppTheme.cardDecoration(),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(AppTheme.cardRadius),
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => StockDetailScreen(stock: stock),
+            ),
           ),
-        ),
-        child: Padding(
-          padding: EdgeInsets.all(isTablet ? 20 : 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _TopRow(stock: stock, isTablet: isTablet),
-              const SizedBox(height: 12),
-              _MetricsRow(
-                yield_: stock.yield1y,
-                price: price,
-                dividend: stock.dividend1y,
-                dividendLabel: _dividendLabel(stock),
-                isTablet: isTablet,
-              ),
-              if (stock.alertFlag) ...[
-                const SizedBox(height: 10),
-                _AlertBanner(reason: stock.alertReason),
+          child: Padding(
+            padding: EdgeInsets.all(isTablet ? 20 : 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _TopRow(stock: stock, isTablet: isTablet),
+                const SizedBox(height: 14),
+                _MetricsRow(
+                  yield_: stock.yield1y,
+                  price: price,
+                  dividend: stock.dividend1y,
+                  dividendLabel: _dividendLabel(stock),
+                  isTablet: isTablet,
+                ),
+                if (stock.alertFlag) ...[
+                  const SizedBox(height: 10),
+                  _AlertBanner(reason: stock.alertReason),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),
@@ -121,22 +125,31 @@ class _MetricsRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final yColor = _yieldColor(yield_);
     return Row(
       children: [
-        _Metric(
-          label: '估算殖利率',
-          value: yield_ != null ? '${yield_!.toStringAsFixed(2)}%' : '--',
-          valueColor: _yieldColor(yield_),
-          isLarge: true,
-          isTablet: isTablet,
+        // 殖利率為主指標：用淡色塊膠囊強調
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+          decoration: BoxDecoration(
+            color: yColor.withOpacity(0.09),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: _Metric(
+            label: '估算殖利率',
+            value: yield_ != null ? '${yield_!.toStringAsFixed(2)}%' : '--',
+            valueColor: yColor,
+            isLarge: true,
+            isTablet: isTablet,
+          ),
         ),
-        const SizedBox(width: 24),
+        const SizedBox(width: 20),
         _Metric(
           label: '現價',
           value: price != null ? '\$${price!.toStringAsFixed(2)}' : '--',
           isTablet: isTablet,
         ),
-        const SizedBox(width: 24),
+        const SizedBox(width: 20),
         _Metric(
           label: dividendLabel,
           value: dividend != null ? '\$${dividend!.toStringAsFixed(2)}' : '--',

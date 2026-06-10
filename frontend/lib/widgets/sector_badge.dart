@@ -18,18 +18,17 @@ class SectorBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     if (stock.sector == 'Unknown') return const SizedBox.shrink();
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: _color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: _color.withOpacity(0.3)),
+        color: _color.withOpacity(0.10),
+        borderRadius: BorderRadius.circular(20),
       ),
       child: Text(
         stock.sectorLabel,
         style: TextStyle(
           color: _color,
           fontSize: 11,
-          fontWeight: FontWeight.w600,
+          fontWeight: FontWeight.w700,
         ),
       ),
     );
