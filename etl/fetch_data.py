@@ -125,15 +125,28 @@ def fetch_stock_data(stock_id: str, name: str, sector: str):
         combined_dividend = 0
         avg_dividend_5y = 0
 
-    # 近 12 個月現金股利合計（近一年殖利率用）
-    dividend_1y = 0
-    if not actions.empty and 'Dividends' in actions.columns:
+    # 近 12 個月股利合計（現金＋配股面額還原；與後端 _dividend_1y 口徑一致）
+    # 同時整理每次除權息明細（供 Dividends 表，股利直條圖用）
+    dividend_1y = 0.0
+    dividend_rows = []
+    if not actions.empty:
+        has_cash = 'Dividends' in actions.columns
+        has_split = 'Stock Splits' in actions.columns
         one_year_ago = datetime.now() - timedelta(days=365)
         if actions.index.tzinfo:
             one_year_ago = one_year_ago.replace(tzinfo=actions.index.tzinfo)
-        else:
-            one_year_ago = one_year_ago.replace(tzinfo=None)
-        dividend_1y = float(actions[actions.index > one_year_ago]['Dividends'].sum())
+        for ts in actions.index:
+            cash = float(actions['Dividends'].get(ts, 0) or 0) if has_cash else 0.0
+            try:
+                ratio = float(actions['Stock Splits'].get(ts, 0)) if has_split else 0.0
+            except (TypeError, ValueError):
+                ratio = 0.0
+            stock = (ratio - 1) * 10 if ratio > 1 else 0.0  # 配股面額還原
+            if cash <= 0 and stock <= 0:
+                continue
+            dividend_rows.append({"date": ts.date(), "cash": cash, "stock": stock})
+            if ts > one_year_ago:
+                dividend_1y += cash + stock
 
     # 3. 獲取最新資料
     latest_day = hist.iloc[-1]
@@ -177,6 +190,7 @@ def fetch_stock_data(stock_id: str, name: str, sector: str):
         "listing_months":  listing_months,
         "drop_threshold":  SECTOR_THRESHOLDS.get(sector, 0.04),
         "price_rows":      price_rows,
+        "dividend_rows":   dividend_rows,
     }
 
 def save_to_db(data):
@@ -234,6 +248,17 @@ def save_to_db(data):
                     ON CONFLICT (Stock_ID, Date) DO NOTHING;
                 """), {"sid": data['stock_id'], "date": pr['date'],
                        "close": pr['close'], "volume": pr['volume']})
+
+        # 3. 更新 Dividends（每次除權息明細，供股利直條圖；與後端 _upsert_dividends 一致）
+        for dr in data.get('dividend_rows', []):
+            conn.execute(text("""
+                INSERT INTO Dividends (Stock_ID, Ex_Date, Cash_Dividend, Stock_Dividend)
+                VALUES (:sid, :date, :cash, :stock)
+                ON CONFLICT (Stock_ID, Ex_Date) DO UPDATE SET
+                    Cash_Dividend = EXCLUDED.Cash_Dividend,
+                    Stock_Dividend = EXCLUDED.Stock_Dividend;
+            """), {"sid": data['stock_id'], "date": dr['date'],
+                   "cash": dr['cash'], "stock": dr['stock']})
     print(f"資料庫更新成功: {data['stock_id']}")
 
 def main():
