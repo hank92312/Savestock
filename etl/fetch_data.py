@@ -21,24 +21,42 @@ SECTOR_THRESHOLDS = {
     "Construction":  0.06,
     "Food":          0.03,
     "Semiconductor": 0.05,
+    "Other":         0.04,
 }
 
-# 預設追蹤的 14 檔股票，含名稱與產業別（由系統固定，不依賴 yfinance sector 欄位）
+# 預設追蹤的 25 檔股票，含名稱與產業別（由系統固定，不依賴 yfinance sector 欄位）
 TARGET_STOCKS = [
-    {"id": "0056.TW",  "name": "元大高股息",      "sector": "ETF"},
-    {"id": "00878.TW", "name": "國泰永續高股息",   "sector": "ETF"},
-    {"id": "00919.TW", "name": "群益台灣精選高息", "sector": "ETF"},
-    {"id": "00929.TW", "name": "復華台灣科技優息", "sector": "ETF"},
-    {"id": "00900.TW", "name": "富邦特選高股息30", "sector": "ETF"},
-    {"id": "2892.TW",  "name": "第一金",           "sector": "Finance"},
-    {"id": "2838.TW",  "name": "聯邦銀",           "sector": "Finance"},
-    {"id": "2887.TW",  "name": "台新金",           "sector": "Finance"},
-    {"id": "2542.TW",  "name": "興富發",           "sector": "Construction"},
-    {"id": "5522.TW",  "name": "遠雄",             "sector": "Construction"},
-    {"id": "2412.TW",  "name": "中華電信",         "sector": "Telecom"},
-    {"id": "3045.TW",  "name": "台灣大哥大",       "sector": "Telecom"},
-    {"id": "1216.TW",  "name": "統一企業",         "sector": "Food"},
-    {"id": "1210.TW",  "name": "大成長城",         "sector": "Food"},
+    # ETF
+    {"id": "0056.TW",  "name": "元大高股息",        "sector": "ETF"},
+    {"id": "00878.TW", "name": "國泰永續高股息",     "sector": "ETF"},
+    {"id": "00919.TW", "name": "群益台灣精選高息",   "sector": "ETF"},
+    {"id": "00929.TW", "name": "復華台灣科技優息",   "sector": "ETF"},
+    {"id": "00900.TW", "name": "富邦特選高股息30",   "sector": "ETF"},
+    {"id": "00713.TW", "name": "元大台灣高息低波",   "sector": "ETF"},
+    # Finance
+    {"id": "2892.TW",  "name": "第一金",             "sector": "Finance"},
+    {"id": "2838.TW",  "name": "聯邦銀",             "sector": "Finance"},
+    {"id": "2887.TW",  "name": "台新金",             "sector": "Finance"},
+    {"id": "2884.TW",  "name": "玉山金",             "sector": "Finance"},
+    {"id": "2886.TW",  "name": "兆豐金",             "sector": "Finance"},
+    {"id": "2890.TW",  "name": "永豐金",             "sector": "Finance"},
+    {"id": "5880.TW",  "name": "合庫金",             "sector": "Finance"},
+    # Construction
+    {"id": "2542.TW",  "name": "興富發",             "sector": "Construction"},
+    {"id": "5522.TW",  "name": "遠雄",               "sector": "Construction"},
+    # Telecom
+    {"id": "2412.TW",  "name": "中華電信",           "sector": "Telecom"},
+    {"id": "3045.TW",  "name": "台灣大哥大",         "sector": "Telecom"},
+    {"id": "4904.TW",  "name": "遠傳電信",           "sector": "Telecom"},
+    # Food
+    {"id": "1216.TW",  "name": "統一企業",           "sector": "Food"},
+    {"id": "1210.TW",  "name": "大成長城",           "sector": "Food"},
+    {"id": "2912.TW",  "name": "統一超",             "sector": "Food"},
+    # Other
+    {"id": "9917.TW",  "name": "中保科",             "sector": "Other"},
+    {"id": "1102.TW",  "name": "亞泥",               "sector": "Other"},
+    {"id": "2347.TW",  "name": "聯強",               "sector": "Other"},
+    {"id": "2633.TW",  "name": "台灣高鐵",           "sector": "Other"},
 ]
 
 def fetch_stock_data(stock_id: str, name: str, sector: str):
