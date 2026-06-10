@@ -136,7 +136,7 @@ def add_to_watchlist(user_id: int, body: AddStockRequest, conn=Depends(get_db)):
     conn.execute(
         text("""
             INSERT INTO User_Stocks (User_ID, Stock_ID, Is_Default, Status)
-            VALUES (:uid, :sid, 0, 'Active')
+            VALUES (:uid, :sid, FALSE, 'Active')
         """),
         {"uid": user_id, "sid": body.stock_id},
     )
@@ -177,7 +177,7 @@ def refresh_watchlist(user_id: int, conn=Depends(get_db)):
             if data:
                 results.append(data)
         except Exception as e:
-            errors.append({"stock_id": r.Stock_ID, "error": str(e)})
+            errors.append({"stock_id": r._mapping.get("stock_id"), "error": str(e)})
 
     # 依近一年殖利率降序排序（與 GET /watchlist 一致；無殖利率者排最後）
     results.sort(key=lambda d: d.get("yield_1y") or -1, reverse=True)
