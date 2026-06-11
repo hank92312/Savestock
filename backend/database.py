@@ -11,7 +11,8 @@ DB_URL = os.getenv("DATABASE_URL", DEFAULT_DB).strip()
 if DB_URL.startswith("sqlite"):
     engine = create_engine(DB_URL, connect_args={"check_same_thread": False})
 else:
-    engine = create_engine(DB_URL)
+    # Neon 免費方案會關閉閒置連線，pool_pre_ping 在借出連線前先驗證，避免拿到死連線
+    engine = create_engine(DB_URL, pool_pre_ping=True, pool_recycle=300)
 
 def get_db():
     with engine.begin() as conn:
