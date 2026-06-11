@@ -82,6 +82,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
   int get _alertCount => _stocks.where((s) => s.alertFlag).length;
 
+  /// 所有股票中最新的資料日期（格式 YYYY/MM/DD），供首頁顯示數據時間
+  String? get _dataDate {
+    final dates = _stocks.map((s) => s.lastDate).whereType<String>().toList();
+    if (dates.isEmpty) return null;
+    dates.sort();
+    return dates.last.replaceAll('-', '/');
+  }
+
   @override
   Widget build(BuildContext context) {
     // 依螢幕寬度決定是否為平板佈局
@@ -145,6 +153,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   onRefresh: () => _loadStocks(live: true, showSpinner: false),
                   isTablet: isTablet,
                   isLandscapeTablet: isLandscapeTablet,
+                  dataDate: _dataDate,
                 ),
     );
   }
@@ -160,6 +169,7 @@ class _StocksView extends StatelessWidget {
   final Future<void> Function() onRefresh;
   final bool isTablet;
   final bool isLandscapeTablet;
+  final String? dataDate;
 
   const _StocksView({
     required this.stocks,
@@ -169,6 +179,7 @@ class _StocksView extends StatelessWidget {
     required this.onRefresh,
     required this.isTablet,
     required this.isLandscapeTablet,
+    this.dataDate,
   });
 
   @override
@@ -180,6 +191,22 @@ class _StocksView extends StatelessWidget {
           selected: selectedSector,
           onChanged: onSectorChanged,
         ),
+        if (dataDate != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+            child: Row(
+              children: [
+                const Icon(Icons.access_time_rounded,
+                    size: 12, color: AppTheme.textSecondary),
+                const SizedBox(width: 4),
+                Text(
+                  '資料更新至 $dataDate',
+                  style: const TextStyle(
+                      fontSize: 11, color: AppTheme.textSecondary),
+                ),
+              ],
+            ),
+          ),
         const Divider(height: 1, color: AppTheme.divider),
         Expanded(
           child: RefreshIndicator(
