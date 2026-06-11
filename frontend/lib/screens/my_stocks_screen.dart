@@ -236,7 +236,7 @@ class _EmptyView extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             const Text(
-              '把感興趣的股票加入追蹤清單\n免費版最多可加入 5 檔',
+              '把感興趣的股票加入追蹤清單\n免費版最多可加入 10 檔',
               textAlign: TextAlign.center,
               style: TextStyle(
                   fontSize: 14, color: AppTheme.textSecondary, height: 1.6),

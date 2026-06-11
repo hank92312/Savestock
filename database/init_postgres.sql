@@ -80,5 +80,5 @@ CREATE TABLE IF NOT EXISTS Dividends (
 );
 
 -- 初始資料
-INSERT INTO Plan_Configs (Tier_Name, Max_Total_Stocks) VALUES ('Free', 5) ON CONFLICT DO NOTHING;
+INSERT INTO Plan_Configs (Tier_Name, Max_Total_Stocks) VALUES ('Free', 10) ON CONFLICT DO NOTHING;
 INSERT INTO Plan_Configs (Tier_Name, Max_Total_Stocks) VALUES ('Premium_Tier_1', 20) ON CONFLICT DO NOTHING;
