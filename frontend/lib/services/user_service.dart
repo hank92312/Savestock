@@ -10,10 +10,7 @@ class UserService {
 
   static Future<int> getOrCreateUserId() async {
     final prefs = await SharedPreferences.getInstance();
-
-    final savedId = prefs.getInt(_keyUserId);
-    if (savedId != null) return savedId;
-
+    // 每次都以 UUID 向後端確認 user_id（防止 DB 遷移後 ID 失效）
     final uuid = prefs.getString(_keyUuid) ?? _generateUuid();
     await prefs.setString(_keyUuid, uuid);
 
@@ -22,7 +19,9 @@ class UserService {
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'uuid': uuid}),
     );
-    if (res.statusCode != 201) throw Exception('建立用戶失敗');
+    if (res.statusCode != 201 && res.statusCode != 200) {
+      throw Exception('建立用戶失敗');
+    }
     final data = jsonDecode(res.body) as Map<String, dynamic>;
     final userId = data['user_id'] as int;
     await prefs.setInt(_keyUserId, userId);
