@@ -1,7 +1,7 @@
 # Savestock — 後續待辦事項 (TODONEXT)
 
 > 最後更新：2026-06-10（MVP 完整上線 + UI 美化 + ETL bug 修復）
-> 目前進度：Phase 1–3 ✅；P3 體驗優化 ✅；P4 後端補強 ✅；P5 部署 ✅；UI 美化 ✅；ETL bug 修復 ✅（聯邦銀近1年股利、永豐金股利圖）。**ETL 自動排程待設定**。
+> 目前進度：Phase 1–3 ✅；P3 體驗優化 ✅；P4 後端補強 ✅；P5 部署 ✅；UI 美化 ✅；ETL bug 修復 ✅（聯邦銀近1年股利、永豐金股利圖）。**ETL 自動排程 ✅（2026-06-11 已建立 Cloud Scheduler 工作）**。
 
 ---
 
@@ -41,7 +41,7 @@
 
 ### 🔴 剩餘待辦（按優先序）
 
-1. **ETL 自動排程（Cloud Scheduler）**：每日盤後自動更新股票資料。Cloud Scheduler 已啟用，待建立工作（詳見下方指令）。
+1. ~~**ETL 自動排程（Cloud Scheduler）**~~ ✅ 已建立（2026-06-11）：`savestock-etl-daily`，每週一至五 15:00（Asia/Taipei）POST `/stocks/refresh`。當日已成功執行（log 無錯誤、資料 last_date 更新至 2026-06-11）。建立指令留存備查：
    ```bash
    gcloud scheduler jobs create http savestock-etl-daily \
      --location=asia-east1 \
@@ -54,9 +54,8 @@
 
 ### 💰 成本提醒
 - 試用期內全部由 $300 折抵金支付。
-- 試用後預估 **~$10–15/月**（Cloud SQL `db-f1-micro` ~$7–10 為最大固定成本）。
-- **Cloud SQL 是持續計費資源**：長時間不開發可先 `gcloud sql instances patch savestock-db --activation-policy=NEVER` 停用省折抵金，要用時改 `ALWAYS`。
-- 試用期結束前評估是否改採 Local-First（最小雲端 DB 只存 Users/Subscriptions + 裝置端 sqflite）。
+- **Cloud SQL 已刪除（2026-06-11），DB 改用 Neon 免費方案，月費歸零**。
+- 剩餘固定成本：Cloud Run `min-instances=1`（防冷啟動）＋ Cloud Scheduler，小規模約 $3–8/月。
 
 ### 🔑 常用部署指令
 ```powershell
