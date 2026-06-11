@@ -159,7 +159,7 @@ Yahoo 財經 ──(yfinance)──> ETL 批次運算 ──> savestock.db
 ### ⏳ 待辦
 * **ETL 自動排程**：Cloud Scheduler 每日盤後觸發（詳見 TODONEXT）。
 * 通知系統接線（`User_Preferences` 已備欄位）。
-* 評估試用期後是否續用 Cloud SQL（~$9/月）或改 Local-First 架構。
+* 資料庫已改用 Neon 免費方案（2026-06-11），Cloud SQL 已刪除，DB 費用歸零。
 
 ---
 
@@ -178,7 +178,7 @@ Yahoo 財經 ──(yfinance)──> ETL 批次運算 ──> savestock.db
 
 * **正式 API 網址**：`https://savestock-api-62102931839.asia-east1.run.app`
 * **前端網址**：`https://savestock.netlify.app`（Flutter Web，Netlify 靜態托管）
-* **DB 連線**：Cloud Run 透過 Unix socket 連 Cloud SQL（`--add-cloudsql-instances`），`DATABASE_URL` 由 **GCP Secret Manager**（`savestock-db-url`）注入（`--set-secrets`），不寫入環境變數明文。
+* **DB 連線**：Cloud Run 透過標準 TCP + SSL 連 Neon，`DATABASE_URL` 由 **GCP Secret Manager**（`savestock-db-url` version 4）注入（`--set-secrets`），不寫入環境變數明文。
 * **容器化檔案**：`backend/Dockerfile`（python:3.11-slim + libpq）、`backend/.dockerignore`。
 * **健康檢查**：`/health` 已驗證回 `{"status":"healthy"}`；`/stocks` 已驗證回 200（空陣列，待資料填充）。
 
@@ -196,7 +196,7 @@ Yahoo 財經 ──(yfinance)──> ETL 批次運算 ──> savestock.db
 | 雲端 DB 資料填充（25 檔預設股） | ✅ 完成 |
 | Flutter App baseUrl 換雲端 API | ✅ `api_service.dart`、`user_service.dart` 已改 |
 | CORS 收斂 | ✅ `allow_origins=["https://savestock.netlify.app"]` |
-| Secret Manager（DATABASE_URL） | ✅ `savestock-db-url` version 2 active |
+| Secret Manager（DATABASE_URL） | ✅ `savestock-db-url` version 4（Neon URL）|
 | Flutter Web 部署 Netlify | ✅ `https://savestock.netlify.app` |
 | 手機端對端驗證 | ✅ 全功能通過 |
 | **ETL 自動排程（Cloud Scheduler）** | 🔴 **待辦**（見 TODONEXT） |
