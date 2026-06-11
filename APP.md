@@ -1,6 +1,6 @@
 # 專案架構文件：Savestock（長線存股防護系統）
 
-> 最後更新：2026-06-10（UI 美化 + ETL bug 修復 + 預設股擴充至 25 檔）
+> 最後更新：2026-06-11（效能大幅優化 + 資料庫遷移至 Neon + ETL 排程上線）
 > 本文件為專案的單一入口參考：看完即可掌握整體內容與架構。
 > 細部待辦與部署決策見 [TODONEXT.md](TODONEXT.md)。
 > 雲端部署現況見 [第 7 節](#7-雲端部署現況gcp)。
@@ -24,8 +24,8 @@
 | 前端 | **Flutter (Dart)** | 跨平台 UI、財經折線圖（fl_chart）、互動 |
 | 後端 | **Python FastAPI** | RESTful API，供 Flutter 呼叫 |
 | ETL | **Python（yfinance + SQLAlchemy）** | 抓盤後資料、算股利/殖利率/警示、寫入 DB |
-| 資料庫 | **SQLite**（本機開發）／**PostgreSQL 15**（生產：GCP Cloud SQL） | 透過 SQLAlchemy `DATABASE_URL` 切換；生產 schema 見 `database/init_postgres.sql` |
-| 雲端 | **GCP Cloud Run + Cloud SQL** | FastAPI 容器化部署，見第 7 節 |
+| 資料庫 | **SQLite**（本機開發）／**Neon PostgreSQL**（生產：免費方案） | 透過 SQLAlchemy `DATABASE_URL` 切換；生產 schema 見 `database/init_postgres.sql` |
+| 雲端 | **GCP Cloud Run + Neon PostgreSQL** | FastAPI 容器化部署，見第 7 節 |
 | 本地儲存 | shared_preferences | 用戶 UUID、教學導覽看過旗標 |
 
 ### 資料流
@@ -45,7 +45,7 @@ Yahoo 財經 ──(yfinance)──> ETL 批次運算 ──> savestock.db
 * 固定追蹤 **25 檔預設股**（清單寫死於 `TARGET_STOCKS`，不依賴 yfinance 的 sector 欄位）。
 * 每檔抓 **1 年歷史收盤價**（約 245 筆）寫入 `Daily_Prices`，`Is_Default=1`。
 * 計算並寫入 `Stock_Master`：平均股利、`Listing_Months`（上市月數）、`Default_Drop_Threshold`（產業閾值）。
-* 目前**手動執行**；伺服器自動排程留待 P5 部署。
+* **Cloud Scheduler 自動排程**：每週一至五 **15:00（台灣時間）** 呼叫 `POST /stocks/refresh`，台股 13:30 收盤後自動更新當日收盤價。工作名稱：`savestock-etl-daily`，區域 `asia-east1`。
 
 ### 3.2 後端 API（`backend/`）
 * 入口 `main.py`（CORS `allow_origins=["https://savestock.netlify.app"]`）、`database.py`（`engine` + `get_db()`，以 `engine.begin()` 自動 commit/rollback；`.strip()` 防 Secret Manager 換行）。
@@ -57,7 +57,7 @@ Yahoo 財經 ──(yfinance)──> ETL 批次運算 ──> savestock.db
 | GET | `/stocks/` | 預設清單（DB 快照，依殖利率**降序**；開啟時快速載入用） |
 | POST | `/stocks/refresh` | 即時抓 yfinance 更新所有預設股並回傳（首頁「更新」按鈕/下拉用） |
 | GET | `/stocks/search?q=&limit=` | 模糊搜尋候選（上市＋ETF，上櫃不列） |
-| GET | `/stocks/lookup/{id}` | 即時查任意台股（代號或中文名）；自動判斷 `.TW/.TWO`，抓取並寫入 DB |
+| GET | `/stocks/lookup/{id}` | 查任意台股（代號或中文名）；DB 有 5 日內資料直接回傳（<1 秒），否則即時抓 yfinance（~25 秒） |
 | GET | `/stocks/{id}` | 單一股票（DB 快照） |
 | GET | `/stocks/{id}/prices?days=` | 歷史收盤價（1–365 日） |
 | GET | `/stocks/{id}/dividends?months=` | 現金股利發放紀錄（6/12/24 月，供股利折線圖） |
@@ -65,10 +65,11 @@ Yahoo 財經 ──(yfinance)──> ETL 批次運算 ──> savestock.db
 | GET | `/users/{uid}/watchlist` | 自選清單（DB，依殖利率降序） |
 | POST | `/users/{uid}/watchlist` | 加入自選（檢查方案上限，超過回 403） |
 | DELETE | `/users/{uid}/watchlist/{sid}` | 移除自選 |
-| POST | `/users/{uid}/watchlist/refresh` | 即時刷新自選並回傳（依殖利率降序） |
+| POST | `/users/{uid}/watchlist/refresh` | 即時刷新自選並回傳（依殖利率降序）；**並行抓取（max 5 threads）**，10 檔 ~50 秒 |
 
 * **搜尋快取**：來源 TWSE `STOCK_DAY_ALL`（含 ETF 如 0050），24h TTL；上櫃不在範圍。
 * **自選股共用補抓**：`_fetch_and_upsert()` 供 lookup 與 watchlist/refresh 共用（即時 yfinance 更新、補 1 年歷史、自選股以 3% 跌幅＋2.5× 量警示）。
+* **連線池設定**：`pool_pre_ping=True, pool_recycle=300`，防止 Neon 閒置關閉連線後回傳死連線（`SSL connection has been closed unexpectedly`）。
 
 ### 3.3 資料庫 Schema（`database/init_sqlite.sql`）
 | 表 | 重點欄位 |
@@ -82,7 +83,7 @@ Yahoo 財經 ──(yfinance)──> ETL 批次運算 ──> savestock.db
 | `Dividends` | `Stock_ID`, `Ex_Date`, `Cash_Dividend`, `Stock_Dividend`（現金＋股票股利歷史，供股利折線圖；`_fetch_and_upsert` 寫入） |
 | `User_Preferences` | `Push_Enabled`, `Email_Enabled`（推播/郵件，尚未接線） |
 
-> 免費方案自選上限＝**5 檔**（已統一：schema 種子、後端無授權 fallback、前端文案皆為 5）。
+> 免費方案自選上限＝**10 檔**（已統一：schema 種子、後端無授權 fallback、前端文案皆為 10）。
 
 ### 3.4 前端 Flutter（`frontend/lib/`）
 | 檔案 | 角色 |
@@ -91,11 +92,11 @@ Yahoo 財經 ──(yfinance)──> ETL 批次運算 ──> savestock.db
 | `screens/onboarding_screen.dart` | **教學導覽**（首次自動顯示、❓可重看；殖利率→用法→警示→免責） |
 | `screens/app_shell.dart` | 底部導覽（預設清單／我的股票）＋首次啟動導覽判斷 |
 | `screens/home_screen.dart` | 預設清單、產業篩選 Chip、響應式佈局、下拉刷新、❓教學入口 |
-| `screens/my_stocks_screen.dart` | 自選清單、開啟即時刷新、刪除鈕（＋左滑刪除）、外部加入即時同步 |
+| `screens/my_stocks_screen.dart` | 自選清單、**開啟用 DB 快速載入（<1 秒）**、🔄 按鈕才即時抓 yfinance、刪除鈕（＋左滑刪除）、外部加入即時同步 |
 | `screens/add_stock_screen.dart` | 模糊搜尋＋候選清單＋無結果直接查詢＋已追蹤標記 |
 | `screens/stock_detail_screen.dart` | 殖利率大字（近1年＋近2年並列）、數據卡（兩種股利＋新上市提示）、AppBar「加入我的股票」書籤鈕、收盤價折線圖＋股利折線圖（半年/1年/2年）、警示卡 |
 | `services/watchlist_notifier.dart` | 加入自選後跨畫面即時通知「我的股票」重抓清單（singleton ChangeNotifier） |
-| `widgets/stock_card.dart`, `widgets/sector_badge.dart` | 共用股票卡、產業標籤 |
+| `widgets/stock_card.dart`, `widgets/sector_badge.dart` | 共用股票卡（現價下方顯示「截至 MM/DD」資料日期）、產業標籤 |
 | `services/api_service.dart`, `services/user_service.dart` | API 呼叫層、UUID 與 user_id 本地管理 |
 | `models/stock.dart` | `Stock`（含 `listingMonths` / `isNewListing`） |
 | `theme/app_theme.dart` | 全域樣式 |
@@ -152,14 +153,21 @@ Yahoo 財經 ──(yfinance)──> ETL 批次運算 ──> savestock.db
 * 體驗優化（P3）：下拉刷新、已追蹤標記、上限友善提示、滑鼠拖曳、圖表日期、刪除鈕。
 * 詳情頁「加入我的股票」書籤鈕＋跨畫面即時同步；股票名稱統一中文；股價顯示至小數點 2 位。
 * UI 美化：卡片陰影（`AppTheme.cardDecoration`）、產業標籤膠囊型、殖利率分色高亮膠囊。
-* 預設股擴充至 **25 檔**（台灣高鐵 2633 替換光寶科 2301）；ETL 全量同步至 Cloud SQL。
+* 預設股擴充至 **25 檔**；ETL 全量同步至 Neon。
 * 股利直條圖加「近5年」選項；不足5年自動顯示提示文字。
 * 首頁「使用教學」按鈕加文字（手機可見）。
+* **Cloud SQL → Neon 遷移**（2026-06-11）：DB 月費歸零，Secret Manager version 4。
+* **ETL 自動排程上線**（2026-06-11）：Cloud Scheduler `savestock-etl-daily`，週一至五 15:00。
+* **效能優化**（2026-06-11）：
+  * 「我的股票」打開改用 DB 快取（<1 秒），🔄 才即時刷新。
+  * `/stocks/lookup/` DB 5 日內有資料直接回傳（~300ms），不再每次打 yfinance。
+  * `watchlist/refresh` 改並行抓取（ThreadPoolExecutor max 5），10 檔從 250 秒縮至 ~50 秒，修復 504 timeout。
+  * 股票卡片加「截至 MM/DD」資料日期標籤。
+  * `pool_pre_ping` 修復 Neon 閒置連線 SSL 斷線錯誤。
 
 ### ⏳ 待辦
-* **ETL 自動排程**：Cloud Scheduler 每日盤後觸發（詳見 TODONEXT）。
 * 通知系統接線（`User_Preferences` 已備欄位）。
-* 資料庫已改用 Neon 免費方案（2026-06-11），Cloud SQL 已刪除，DB 費用歸零。
+* 明日驗證（2026-06-12）：Neon SSL 修復確認、排程自動執行確認（見 TODONEXT.md）。
 
 ---
 
@@ -171,7 +179,7 @@ Yahoo 財經 ──(yfinance)──> ETL 批次運算 ──> savestock.db
 
 | 資源 | 服務 | 識別 / 設定 |
 | --- | --- | --- |
-| 後端 API | **Cloud Run** | 服務名 `savestock-api`；512Mi；min=0 / max=2 instances；允許未驗證存取 |
+| 後端 API | **Cloud Run** | 服務名 `savestock-api`；512Mi；**min=1** / max=2 instances（防冷啟動）；允許未驗證存取 |
 | 資料庫 | **Neon PostgreSQL（免費方案）** | `ep-floral-credit-aojbdxlt.c-2.ap-southeast-1.aws.neon.tech`；0.5GB；AWS Singapore（Cloud SQL 已於 2026-06-11 刪除） |
 | 容器倉庫 | **Artifact Registry** | `savestock-repo`（Docker 格式） |
 | 容器建置 | **Cloud Build** | 遠端建置（本機未裝 Docker）；image tag `savestock-api:latest` |
@@ -199,7 +207,7 @@ Yahoo 財經 ──(yfinance)──> ETL 批次運算 ──> savestock.db
 | Secret Manager（DATABASE_URL） | ✅ `savestock-db-url` version 4（Neon URL）|
 | Flutter Web 部署 Netlify | ✅ `https://savestock.netlify.app` |
 | 手機端對端驗證 | ✅ 全功能通過 |
-| **ETL 自動排程（Cloud Scheduler）** | 🔴 **待辦**（見 TODONEXT） |
+| **ETL 自動排程（Cloud Scheduler）** | ✅ **已上線**（`savestock-etl-daily`，週一至五 15:00） |
 
 ### 7.4 成本提醒
 
@@ -220,7 +228,7 @@ Yahoo 財經 ──(yfinance)──> ETL 批次運算 ──> savestock.db
 | --- | --- |
 | 預設股 `Is_Default=1`、自選股 `Is_Default=0` | 避免 lookup 新增股混入預設清單 |
 | 股票中文名優先取 TWSE 搜尋快取（批次、穩定），次為即時 mis API，最後才 yfinance 英文 | 即時 mis API 偶爾失敗會退回英文名並寫入 DB；既有英文名於下次更新自動升級為中文 |
-| 我的股票開啟即 `refresh` | 顯示即時資料而非 DB 快照 |
+| 我的股票開啟用 DB 快取（`fetchWatchlist`） | 開啟速度 <1 秒；資料由 Cloud Scheduler 每日 15:00 自動更新，不需每次爬 yfinance |
 | 搜尋快取用 STOCK_DAY_ALL | 涵蓋 ETF；上櫃不在範圍 |
 | 債券 ETF（00xxB）不支援 | Yahoo 無資料，顯示明確說明 |
 | 新上市 < 24 月股利年化 | 固定 ÷2 會低估新上市股 |
@@ -259,6 +267,6 @@ netlify deploy --prod --dir=. --site=ebec3bc6-8ea5-4131-98b0-e08c54aaaac8
 # gcloud builds submit "C:\Savestock\backend" --tag=asia-east1-docker.pkg.dev/savestock-app/savestock-repo/savestock-api:latest --project=savestock-app
 # （deploy 指令含密碼，見 TODONEXT.md 常用部署指令）
 
-# 7. 同步資料到 Cloud SQL（需先啟動 Cloud SQL Auth Proxy）
-# 密碼查詢：gcloud secrets versions access latest --secret="savestock-db-url" --project=savestock-app
+# 7. 查 Cloud Run 錯誤 log
+# gcloud logging read "resource.type=cloud_run_revision AND resource.labels.service_name=savestock-api AND severity>=ERROR" --project=savestock-app --limit=20 --format="value(timestamp,textPayload)"
 ```
