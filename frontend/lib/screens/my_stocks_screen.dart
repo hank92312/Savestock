@@ -53,8 +53,7 @@ class _MyStocksScreenState extends State<MyStocksScreen> {
     });
     try {
       final id = await UserService.getOrCreateUserId();
-      // 直接從網路抓最新資料並更新 DB，確保顯示即時數據
-      final stocks = await ApiService.refreshAndFetchWatchlist(id);
+      final stocks = await ApiService.fetchWatchlist(id);
       setState(() {
         _userId = id;
         _stocks = stocks;
@@ -65,6 +64,25 @@ class _MyStocksScreenState extends State<MyStocksScreen> {
         _error = '載入失敗，請確認網路連線';
         _loading = false;
       });
+    }
+  }
+
+  Future<void> _refresh() async {
+    if (_userId == null) return;
+    setState(() => _loading = true);
+    try {
+      final stocks = await ApiService.refreshAndFetchWatchlist(_userId!);
+      if (!mounted) return;
+      setState(() {
+        _stocks = stocks;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('更新失敗，請稍後再試')),
+      );
     }
   }
 
@@ -117,8 +135,8 @@ class _MyStocksScreenState extends State<MyStocksScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
-            tooltip: '重新整理',
-            onPressed: _init,
+            tooltip: '即時更新（從網路抓最新資料）',
+            onPressed: _refresh,
           ),
           IconButton(
             icon: const Icon(Icons.add_rounded),

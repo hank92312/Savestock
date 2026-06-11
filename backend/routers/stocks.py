@@ -446,13 +446,12 @@ def search_stocks(
 
 @router.get("/lookup/{stock_id}")
 def lookup_stock(stock_id: str, conn=Depends(get_db)):
-    """即時查詢任意台股。支援股票代號（0050、6147）或中文名稱（台積電）。"""
+    """查詢任意台股。DB 有近期資料（5 個交易日內）直接回傳；否則即時抓 yfinance。"""
+    from datetime import date
     query = stock_id.strip()
 
-    # 判斷是否包含中文
     has_chinese = any('一' <= c <= '鿿' for c in query)
     if has_chinese:
-        # 1. 先查 Stock_Master（已知股票）
         row = conn.execute(
             text("SELECT Stock_ID FROM Stock_Master WHERE Name LIKE :q"),
             {"q": f"%{query}%"},
@@ -460,7 +459,6 @@ def lookup_stock(stock_id: str, conn=Depends(get_db)):
         if row:
             sid = row.stock_id
         else:
-            # 2. 向快取查名稱對應代號
             code = _search_tw_code_by_name(query)
             if code:
                 sid = _resolve_stock_id(code)
@@ -470,11 +468,45 @@ def lookup_stock(stock_id: str, conn=Depends(get_db)):
                     detail=f"找不到「{query}」，請改用股票代號查詢（如：2330）",
                 )
     else:
-        # 已含後綴則直接用，否則從快取解析正確後綴（.TW 或 .TWO）
         if query.upper().endswith(".TW") or query.upper().endswith(".TWO"):
             sid = query.upper()
         else:
             sid = _resolve_stock_id(query)
+
+    # DB 有近期資料（含週末/假日：看5個日曆日內是否有收盤價）則直接回傳，不打 yfinance
+    cutoff = date.today() - timedelta(days=5)
+    cached = conn.execute(text("""
+        SELECT sm.Stock_ID, sm.Name, sm.Sector,
+               sm.Avg_Dividend_2Y, sm.Avg_Dividend_5Y, sm.Dividend_1Y, sm.Listing_Months,
+               dp.Close_Price, dp.Alert_Flag, dp.Alert_Reason, dp.Date
+        FROM Stock_Master sm
+        JOIN Daily_Prices dp ON sm.Stock_ID = dp.Stock_ID
+            AND dp.Date = (SELECT MAX(Date) FROM Daily_Prices WHERE Stock_ID = sm.Stock_ID)
+        WHERE sm.Stock_ID = :sid AND dp.Date >= :cutoff
+    """), {"sid": sid, "cutoff": cutoff}).fetchone()
+
+    if cached:
+        m = cached._mapping
+        close = m.get("close_price")
+        avg_div = m.get("avg_dividend_2y")
+        avg_div_5y = m.get("avg_dividend_5y")
+        div_1y = m.get("dividend_1y")
+        return {
+            "stock_id": m.get("stock_id"),
+            "name": m.get("name"),
+            "sector": m.get("sector"),
+            "avg_dividend_2y": avg_div,
+            "avg_dividend_5y": avg_div_5y,
+            "dividend_1y": div_1y,
+            "listing_months": m.get("listing_months"),
+            "close_price": close,
+            "estimated_yield": round(avg_div / close * 100, 2) if close and avg_div else None,
+            "yield_1y": round(div_1y / close * 100, 2) if close and div_1y else None,
+            "yield_5y": round(avg_div_5y / close * 100, 2) if close and avg_div_5y else None,
+            "alert_flag": bool(m.get("alert_flag")),
+            "alert_reason": m.get("alert_reason") or "",
+            "last_date": str(m.get("date")),
+        }
 
     result = _fetch_and_upsert(sid, conn)
     if result is None:
