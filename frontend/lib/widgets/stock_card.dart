@@ -45,6 +45,7 @@ class StockCard extends StatelessWidget {
                   price: price,
                   dividend: stock.dividend1y,
                   dividendLabel: _dividendLabel(stock),
+                  lastDate: stock.lastDate,
                   isTablet: isTablet,
                 ),
                 if (stock.alertFlag) ...[
@@ -110,17 +111,26 @@ class _TopRow extends StatelessWidget {
   }
 }
 
+String _formatDate(String iso) {
+  // "2026-06-11" → "06/11"
+  final parts = iso.split('-');
+  if (parts.length < 3) return iso;
+  return '${parts[1]}/${parts[2]}';
+}
+
 class _MetricsRow extends StatelessWidget {
   final double? yield_;
   final double? price;
   final double? dividend;
   final String dividendLabel;
+  final String? lastDate;
   final bool isTablet;
   const _MetricsRow(
       {this.yield_,
       this.price,
       this.dividend,
       required this.dividendLabel,
+      this.lastDate,
       required this.isTablet});
 
   @override
@@ -144,10 +154,22 @@ class _MetricsRow extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 20),
-        _Metric(
-          label: '現價',
-          value: price != null ? '\$${price!.toStringAsFixed(2)}' : '--',
-          isTablet: isTablet,
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _Metric(
+              label: '現價',
+              value: price != null ? '\$${price!.toStringAsFixed(2)}' : '--',
+              isTablet: isTablet,
+            ),
+            if (lastDate != null) ...[
+              const SizedBox(height: 2),
+              Text(
+                '截至 ${_formatDate(lastDate!)}',
+                style: const TextStyle(fontSize: 10, color: AppTheme.textSecondary),
+              ),
+            ],
+          ],
         ),
         const SizedBox(width: 20),
         _Metric(

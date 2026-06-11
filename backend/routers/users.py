@@ -2,7 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import text
 from pydantic import BaseModel
 from typing import Optional
-from database import get_db
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from database import get_db, engine
 from routers.stocks import _fetch_and_upsert
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -169,17 +170,24 @@ def refresh_watchlist(user_id: int, conn=Depends(get_db)):
         WHERE us.User_ID = :uid AND us.Status = 'Active'
     """), {"uid": user_id}).fetchall()
 
+    stock_ids = [r._mapping.get("stock_id") for r in rows]
+
+    def _fetch_one(sid):
+        with engine.begin() as c:
+            return _fetch_and_upsert(sid, c)
+
     results = []
     errors = []
-    for r in rows:
-        try:
-            data = _fetch_and_upsert(r._mapping.get("stock_id"), conn)
-            if data:
-                results.append(data)
-        except Exception as e:
-            errors.append({"stock_id": r._mapping.get("stock_id"), "error": str(e)})
+    with ThreadPoolExecutor(max_workers=5) as ex:
+        futures = {ex.submit(_fetch_one, sid): sid for sid in stock_ids}
+        for future in as_completed(futures):
+            sid = futures[future]
+            try:
+                data = future.result()
+                if data:
+                    results.append(data)
+            except Exception as e:
+                errors.append({"stock_id": sid, "error": str(e)})
 
-    # 依近一年殖利率降序排序（與 GET /watchlist 一致；無殖利率者排最後）
     results.sort(key=lambda d: d.get("yield_1y") or -1, reverse=True)
-
     return {"updated": len(results), "errors": errors, "stocks": results}
