@@ -50,7 +50,7 @@
      --http-method=POST \
      --time-zone="Asia/Taipei"
    ```
-   > ⚠️ `/stocks/refresh` 目前只更新預設股。若要 ETL 全量（含 Dividends、Listing_Months 等），需另建 `/admin/etl` 端點或改以 Cloud Run Job 執行 `etl/fetch_data.py`。
+   > ✅ `/stocks/refresh` 會對每檔預設股呼叫 `_fetch_and_upsert`，包含 Dividends、Listing_Months、股價、殖利率全部欄位，與 ETL 口徑一致。使用者在 App 下拉更新即等同全量更新，不需要另跑 ETL。
 
 ### 💰 成本提醒
 - 試用期內全部由 $300 折抵金支付。
