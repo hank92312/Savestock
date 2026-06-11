@@ -14,13 +14,14 @@
 | 資源 | 服務 | 識別 / 設定 | 狀態 |
 | --- | --- | --- | --- |
 | 後端 API | Cloud Run | `savestock-api`；512Mi；min=0/max=2；允許未驗證 | ✅ 運行中 |
-| 資料庫 | Cloud SQL PostgreSQL 15 | `savestock-db`；`db-f1-micro`；10GB SSD；無備份 | ✅ 運行中（14 檔資料已填入） |
+| 資料庫 | Neon PostgreSQL（免費方案） | `ep-floral-credit-aojbdxlt.c-2.ap-southeast-1.aws.neon.tech`；0.5GB；AWS Singapore | ✅ 運行中（25 檔資料已填入） |
 | 容器倉庫 | Artifact Registry | `savestock-repo`（Docker） | ✅ |
 | 容器建置 | Cloud Build | 遠端建置（本機無 Docker） | ✅ |
 
 - **正式 API 網址**：`https://savestock-api-62102931839.asia-east1.run.app`（`/health`、`/stocks` 已驗證 200）
-- **DB 連線**：Cloud Run 走 Unix socket（`--add-cloudsql-instances`）；`DATABASE_URL` 透過 **GCP Secret Manager** 注入（secret `savestock-db-url`，version 2 為 active latest；`.strip()` 已加入 `database.py` 防換行問題）。
-- **postgres 密碼**：未寫入版控；存於 Secret Manager `savestock-db-url`，Cloud Run 以 `--set-secrets="DATABASE_URL=savestock-db-url:latest"` 取得。
+- **DB 連線**：Cloud Run 透過 `DATABASE_URL` 環境變數連 Neon（標準 TCP + SSL）；`DATABASE_URL` 透過 **GCP Secret Manager** 注入（secret `savestock-db-url`，version 4 為 active latest）。
+- **Neon 密碼**：未寫入版控；存於 Secret Manager `savestock-db-url`（version 4）及本機 `.env`（已 gitignore）。Cloud Run 以 `--set-secrets="DATABASE_URL=savestock-db-url:latest"` 取得。
+- **⚠️ Cloud SQL 已於 2026-06-11 刪除**，不再計費。
 - **生產 schema**：`database/init_postgres.sql`（已匯入雲端）
 
 ### 已完成的 SQLite→PostgreSQL 改寫（commit `7615669`）
@@ -74,16 +75,11 @@ gcloud builds submit "C:\Savestock\backend" --tag=asia-east1-docker.pkg.dev/save
 # 看 Cloud Run 錯誤 log
 gcloud logging read "resource.type=cloud_run_revision AND resource.labels.service_name=savestock-api AND severity>=ERROR" --project=savestock-app --limit=20 --format="value(textPayload)"
 
-# ── Cloud SQL 省費開關 ───────────────────────────────────────
-gcloud sql instances patch savestock-db --activation-policy=NEVER --project=savestock-app   # 停
-gcloud sql instances patch savestock-db --activation-policy=ALWAYS --project=savestock-app  # 開
-
-# ── Cloud SQL 資料同步（本機 ETL → 雲端）────────────────────
-# 步驟 1：Google Cloud SDK Shell 啟動 Proxy（保持視窗開著）
-# C:\Savestock\tools\cloud-sql-proxy.exe savestock-app:asia-east1:savestock-db --port=5432
-# 步驟 2：新 PowerShell 視窗執行 ETL
-# $env:DATABASE_URL = "postgresql+psycopg2://postgres:【密碼】@127.0.0.1:5432/savestock"
+# ── Neon 資料同步（本機 ETL → 雲端，不需 Proxy）────────────
+# 方法 1：直接設定環境變數（密碼存於 Secret Manager / .env）
+# $env:DATABASE_URL = "postgresql+psycopg2://neondb_owner:【密碼】@ep-floral-credit-aojbdxlt.c-2.ap-southeast-1.aws.neon.tech/neondb?sslmode=require"
 # Set-Location C:\Savestock; .venv\Scripts\python.exe etl\fetch_data.py
+# 方法 2：修改 .env（把 SQLite 那行加 # 改成 Neon 那行），再直接跑 ETL
 # 密碼查詢：gcloud secrets versions access latest --secret="savestock-db-url" --project=savestock-app
 ```
 

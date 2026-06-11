@@ -172,7 +172,7 @@ Yahoo 財經 ──(yfinance)──> ETL 批次運算 ──> savestock.db
 | 資源 | 服務 | 識別 / 設定 |
 | --- | --- | --- |
 | 後端 API | **Cloud Run** | 服務名 `savestock-api`；512Mi；min=0 / max=2 instances；允許未驗證存取 |
-| 資料庫 | **Cloud SQL (PostgreSQL 15)** | 實例 `savestock-db`；`db-f1-micro`；10GB SSD；**無自動備份**（省成本） |
+| 資料庫 | **Neon PostgreSQL（免費方案）** | `ep-floral-credit-aojbdxlt.c-2.ap-southeast-1.aws.neon.tech`；0.5GB；AWS Singapore（Cloud SQL 已於 2026-06-11 刪除） |
 | 容器倉庫 | **Artifact Registry** | `savestock-repo`（Docker 格式） |
 | 容器建置 | **Cloud Build** | 遠端建置（本機未裝 Docker）；image tag `savestock-api:latest` |
 
@@ -203,9 +203,9 @@ Yahoo 財經 ──(yfinance)──> ETL 批次運算 ──> savestock.db
 
 ### 7.4 成本提醒
 
-* 試用期內全部由 $300 折抵金支付。
-* 試用後預估 **約 $10–15/月**（最大固定成本為 Cloud SQL `db-f1-micro` ~$7–10；Cloud Run 低流量近乎免費）。
-* 試用期結束前須評估是否續用或改採「最小雲端 DB（只存 Users/Subscriptions）＋ 裝置端 sqflite」的 Local-First 架構（討論見對話紀錄，尚未實作）。
+* **資料庫已改用 Neon 免費方案（2026-06-11）**，Cloud SQL 已刪除，DB 費用歸零。
+* 試用後預估 **近乎免費**（Cloud Run 低流量近乎免費；Neon 免費方案 0.5GB 足夠）。
+* GCP 試用折抵金目前只剩 Cloud Run 計費，消耗極慢。
 
 ### 7.5 風險
 
