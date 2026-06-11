@@ -52,6 +52,13 @@
    ```
    > ✅ `/stocks/refresh` 會對每檔預設股呼叫 `_fetch_and_upsert`，包含 Dividends、Listing_Months、股價、殖利率全部欄位，與 ETL 口徑一致。使用者在 App 下拉更新即等同全量更新，不需要另跑 ETL。
 
+2. **驗證 Neon 閒置連線修復（2026-06-12 執行）**：2026-06-11 修了 `pool_pre_ping`（commit `d0d9340`，revision `savestock-api-00017-bfh`），但 SSL 錯誤只在連線閒置後觸發，需隔天看 log 確認歸零：
+   ```powershell
+   gcloud logging read "resource.type=cloud_run_revision AND resource.labels.service_name=savestock-api AND severity>=ERROR AND timestamp>=\"2026-06-11T03:20:00Z\"" --project=savestock-app --limit=10 --format="value(timestamp,textPayload)"
+   ```
+   - 預期：無 `SSL connection has been closed unexpectedly` 錯誤
+   - 順便確認當日 15:00 排程 `savestock-etl-daily` 自動執行成功：`gcloud scheduler jobs describe savestock-etl-daily --location=asia-east1 --project=savestock-app`（看 `lastAttemptTime` 與 `status` 是否為空 = 成功）
+
 ### 💰 成本提醒
 - 試用期內全部由 $300 折抵金支付。
 - **Cloud SQL 已刪除（2026-06-11），DB 改用 Neon 免費方案，月費歸零**。
