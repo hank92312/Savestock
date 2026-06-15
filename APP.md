@@ -1,6 +1,6 @@
 # 專案架構文件：Savestock（長線存股防護系統）
 
-> 最後更新：2026-06-15（個人年度股利試算 Phase 1+2 上線：試算分頁 + Django 報表服務/Admin）
+> 最後更新：2026-06-15（個人年度股利試算 Phase 1+2+3 上線：試算分頁 + Django 報表 + 證交所已公告配息）
 > 本文件為專案的單一入口參考：看完即可掌握整體內容與架構。
 > 細部待辦與部署決策見 [TODONEXT.md](TODONEXT.md)。
 > 雲端部署現況見 [第 7 節](#7-雲端部署現況gcp)。
@@ -51,7 +51,7 @@ Yahoo 財經 ──(yfinance)──> ETL 批次運算 ──> savestock.db
 ### 3.2 後端 API（`backend/`）
 * 入口 `main.py`（CORS `allow_origins=["https://savestock.netlify.app"]`）、`database.py`（`engine` + `get_db()`，以 `engine.begin()` 自動 commit/rollback；`.strip()` 防 Secret Manager 換行）。
 * 路由：`routers/stocks.py`、`routers/users.py`、`routers/portfolio.py`。
-* **共用計算層 `core/`**：框架無關的純 Python 模組（如 `dividend_calc.py`），供 FastAPI 與未來 Django 報表共用同一份股利口徑，避免邏輯多份維護。附 `tests/`（pytest）。
+* **共用計算層 `core/`**：框架無關的 Python 模組——`dividend_calc.py`（股利估算口徑）、`twse_dividends.py`（證交所已公告配息），供 FastAPI 與 Django 報表共用，避免邏輯多份維護。附 `tests/`（pytest）。
 
 | Method | 路徑 | 說明 |
 | --- | --- | --- |
@@ -123,9 +123,13 @@ Yahoo 財經 ──(yfinance)──> ETL 批次運算 ──> savestock.db
 * **清單顯示與排序**：以**近一年殖利率**（`Dividend_1Y ÷ 最新收盤價`）為主，清單與自選皆依此**降序**排列；卡片股利欄顯示「近1年股利」（不滿 12 月標「近 X 月股利」）。
 * **詳情頁**：同時並列**近一年殖利率**與**近2年平均殖利率**（2 年平均為保守參考，揭露配息陷阱）；數據卡同時顯示近1年股利與近2年平均股利，不滿 1/2 年改標「近 X 月／上市迄今平均」並加邊界提示。
 
-### 個人年度股利試算（`core/dividend_calc.py`）
-* **全年估算基準**：使用者每檔可選「近1年（`Dividend_1Y`，滾動 12 月）」或「近5年平均（`Avg_Dividend_5Y`）」。
-* **為何不用「今年已除息」當全年值**：yfinance 只提供已除息歷史，今年「已公告未除息」抓不到；且季配／半年配個股（0056、2330）年中時「今年已除息」只是部分金額，當全年會嚴重低估。故全年估算一律用滾動值，「今年已除息」僅作實際資訊併列。真正的「今年已公布全年配息」需另接 MOPS（Phase 3）。
+### 個人年度股利試算（`core/dividend_calc.py`、`core/twse_dividends.py`）
+* **三層口徑（優先序）**：
+  1. **已公告**（`source=announced`）：年配股今年正式公告之全年配息，來自證交所 OpenAPI `t187ap45_L`（`core/twse_dividends.py` 抓全市場、快取 12h）。實際值、非估算。
+  2. **近1年**（`Dividend_1Y`，滾動 12 月）／**近5年平均**（`Avg_Dividend_5Y`）：未公告時依使用者選的基準估算。
+* **為何季配股不用已公告**：季配／半年配股年中無法得知全年完整配息（後續季別尚未開會決議），證交所資料只有「年度」列＝年配股；季配股交回滾動估算（近1年本就涵蓋完整週期）。
+* **為何不用「今年已除息」當全年值**：yfinance 只提供已除息歷史，季配股年中「已除息」只是部分金額，當全年會嚴重低估。故「今年已除息」僅作實際資訊併列。
+* **影響較大個股**：只列「估算（非已公告）」個股——已公告為確定值，不確定的才需提醒。
 * **影響較大個股**：占估算總額比重 ≥ 10% 者（無人跨門檻則取前 3 大），其配息變動最影響總額，於估算後提示窗列出。
 * 純函式設計、不依賴框架／DB，FastAPI 與未來 Django 共用；附 7 個單元測試（季配股不低估、basis 切換、零股、查無資料 fail loud）。
 
@@ -177,10 +181,11 @@ Yahoo 財經 ──(yfinance)──> ETL 批次運算 ──> savestock.db
   * `pool_pre_ping` 修復 Neon 閒置連線 SSL 斷線錯誤。
 * **個人年度股利試算 Phase 1**（2026-06-15）：`core/dividend_calc.py` 共用計算模組（+7 單元測試）、`POST /portfolio/estimate`、Flutter「股利試算」分頁（持股存裝置端、自動回填、估算提示窗）。已部署上線。
 * **個人年度股利試算 Phase 2**（2026-06-15）：`web_django/` Django 報表服務上線——伺服器渲染可分享/可列印報表（`/report?d=base64持股`，計算 import 共用 `core`、ORM 讀 Neon）、Django Admin 唯讀檢視 Stock_Master；Flutter 試算結果加「產生可分享網頁報表」按鈕。已部署（Cloud Run `savestock-report`）。
+* **個人年度股利試算 Phase 3**（2026-06-15）：`core/twse_dividends.py` 接證交所 OpenAPI `t187ap45_L`，年配股採今年正式公告之全年配息（實際值優先於估算）；季配股維持滾動估算；試算/報表標示「已公告 vs 估算」。已部署（FastAPI + Django + 前端）。
 
 ### ⏳ 待辦
-* **個人年度股利試算 Phase 3**：接 MOPS 公開資訊觀測站，補「已公告未除息」配息，提升「今年已公布」準確度。
 * 通知系統接線（`User_Preferences` 已備欄位）。
+* 已知限制：證交所 `t187ap45_L` 僅含上市（`.TW`）；上櫃（`.TWO`）年配股目前無已公告資料、走估算。
 
 ---
 
