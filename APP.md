@@ -1,6 +1,6 @@
 # 專案架構文件：Savestock（長線存股防護系統）
 
-> 最後更新：2026-06-15（個人年度股利試算 Phase 1+2+3 上線：試算分頁 + Django 報表 + 證交所已公告配息）
+> 最後更新：2026-06-15（Phase 4：分享功能 + 試算圖片下載上線；CORS 開放 localhost 供本地開發）
 > 本文件為專案的單一入口參考：看完即可掌握整體內容與架構。
 > 細部待辦與部署決策見 [TODONEXT.md](TODONEXT.md)。
 > 雲端部署現況見 [第 7 節](#7-雲端部署現況gcp)。
@@ -49,7 +49,7 @@ Yahoo 財經 ──(yfinance)──> ETL 批次運算 ──> savestock.db
 * **Cloud Scheduler 自動排程**：每週一至五 **15:00（台灣時間）** 呼叫 `POST /stocks/refresh`，台股 13:30 收盤後自動更新當日收盤價。工作名稱：`savestock-etl-daily`，區域 `asia-east1`。
 
 ### 3.2 後端 API（`backend/`）
-* 入口 `main.py`（CORS `allow_origins=["https://savestock.netlify.app"]`）、`database.py`（`engine` + `get_db()`，以 `engine.begin()` 自動 commit/rollback；`.strip()` 防 Secret Manager 換行）。
+* 入口 `main.py`（CORS `allow_origins=["https://savestock.netlify.app"]` + `allow_origin_regex=r"http://localhost(:\d+)?"` 供本地 `flutter run -d chrome` 開發）、`database.py`（`engine` + `get_db()`，以 `engine.begin()` 自動 commit/rollback；`.strip()` 防 Secret Manager 換行）。
 * 路由：`routers/stocks.py`、`routers/users.py`、`routers/portfolio.py`。
 * **共用計算層 `core/`**：框架無關的 Python 模組——`dividend_calc.py`（股利估算口徑）、`twse_dividends.py`（證交所已公告配息），供 FastAPI 與 Django 報表共用，避免邏輯多份維護。附 `tests/`（pytest）。
 
@@ -98,7 +98,7 @@ Yahoo 財經 ──(yfinance)──> ETL 批次運算 ──> savestock.db
 | `screens/my_stocks_screen.dart` | 自選清單、**開啟用 DB 快速載入（<1 秒）**、🔄 按鈕才即時抓 yfinance、刪除鈕（＋左滑刪除）、外部加入即時同步 |
 | `screens/add_stock_screen.dart` | 模糊搜尋＋候選清單＋無結果直接查詢＋已追蹤標記 |
 | `screens/stock_detail_screen.dart` | 殖利率大字（近1年＋近2年並列）、數據卡（兩種股利＋新上市提示）、AppBar「加入我的股票」書籤鈕、收盤價折線圖＋股利折線圖（半年/1年/2年）、警示卡 |
-| `screens/dividend_calc_screen.dart` | **年度股利試算**：輸入持股（搜尋選股＋股數，含零股）→ 估算今年可領股利；持股存裝置端、自動回填；估算後彈提示窗（歷史估算說明＋影響較大個股） |
+| `screens/dividend_calc_screen.dart` | **年度股利試算**：輸入持股（搜尋選股＋股數，含零股）→ 估算今年可領股利；持股存裝置端、自動回填；估算後彈提示窗（歷史估算說明＋影響較大個股）；**分享功能**：「分享」按鈕開底部 Sheet，提供複製連結／開啟報表／LINE／Facebook／下載試算圖片（PNG，含持股明細）5 個選項；`package:web` 直接呼叫 `window.open` 繞過 url_launcher 限制 |
 | `services/watchlist_notifier.dart` | 加入自選後跨畫面即時通知「我的股票」重抓清單（singleton ChangeNotifier） |
 | `services/portfolio_service.dart` | 試算持股清單的裝置端儲存（shared_preferences，與 UUID 同機制） |
 | `widgets/stock_card.dart`, `widgets/sector_badge.dart` | 共用股票卡（現價下方顯示「截至 MM/DD」資料日期）、產業標籤 |
@@ -182,6 +182,12 @@ Yahoo 財經 ──(yfinance)──> ETL 批次運算 ──> savestock.db
 * **個人年度股利試算 Phase 1**（2026-06-15）：`core/dividend_calc.py` 共用計算模組（+7 單元測試）、`POST /portfolio/estimate`、Flutter「股利試算」分頁（持股存裝置端、自動回填、估算提示窗）。已部署上線。
 * **個人年度股利試算 Phase 2**（2026-06-15）：`web_django/` Django 報表服務上線——伺服器渲染可分享/可列印報表（`/report?d=base64持股`，計算 import 共用 `core`、ORM 讀 Neon）、Django Admin 唯讀檢視 Stock_Master；Flutter 試算結果加「產生可分享網頁報表」按鈕。已部署（Cloud Run `savestock-report`）。
 * **個人年度股利試算 Phase 3**（2026-06-15）：`core/twse_dividends.py` 接證交所 OpenAPI `t187ap45_L`，年配股採今年正式公告之全年配息（實際值優先於估算）；季配股維持滾動估算；試算/報表標示「已公告 vs 估算」。已部署（FastAPI + Django + 前端）。
+* **分享功能 Phase 4**（2026-06-15）：
+  * **Bug 修正**：原「產生可分享網頁報表」按鈕以 `url_launcher` 的 `LaunchMode.externalApplication` 開新分頁，在 `url_launcher_web 2.4.1`（已遷移 `package:web`）下靜默失敗；改用 `package:web` 直接呼叫 `web.window.open(url, '_blank')`，瀏覽器正確觸發開新分頁/封鎖提示。
+  * **多元分享 Sheet**：計算後改為「分享」按鈕，開底部 Sheet，包含 5 個選項：複製連結（報表 URL 到剪貼簿）、開啟報表（新分頁 Django HTML）、LINE 分享（`social-plugins.line.me`）、Facebook 分享（`facebook.com/sharer`）、下載試算圖片（PNG）。
+  * **試算圖片**：`_ShareCard` widget（`375px` 固定寬，白底）以 `Positioned(left: -2000)` 渲染於 Stack off-screen，`RepaintBoundary.toImage(pixelRatio: 3.0)` 截圖後透過 `Blob` + anchor click 下載；內容包含 Savestock 標題、年份、總額漸層卡、各持股明細（名稱/代號/股數/股利/已公告或估算標籤）、網站 footer。
+  * **CORS 開放 localhost**：`backend/main.py` 加 `allow_origin_regex=r"http://localhost(:\d+)?"`，`flutter run -d chrome` 本地開發不需修改 API URL。已部署（FastAPI revision 00023）。
+  * **pubspec.yaml**：加 `web: ^1.1.0`（將已存在的 transitive dep 升為 direct dep）。
 
 ### ⏳ 待辦
 * 通知系統接線（`User_Preferences` 已備欄位）。

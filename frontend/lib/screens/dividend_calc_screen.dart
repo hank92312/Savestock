@@ -1,8 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:js_interop';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:web/web.dart' as web;
 import '../models/portfolio.dart';
 import '../services/api_service.dart';
 import '../services/portfolio_service.dart';
@@ -18,6 +21,8 @@ class DividendCalcScreen extends StatefulWidget {
 }
 
 class _DividendCalcScreenState extends State<DividendCalcScreen> {
+  final _repaintKey = GlobalKey();
+
   List<Holding> _holdings = [];
   PortfolioEstimate? _result;
   bool _loading = true;
@@ -102,18 +107,154 @@ class _DividendCalcScreenState extends State<DividendCalcScreen> {
     }
   }
 
-  /// 開啟 Django 網頁報表（持股編碼於網址，可分享/可列印）
-  Future<void> _openWebReport() async {
+  String _buildReportUrl() {
     final json = jsonEncode(_holdings
         .map((h) => {'s': h.stockId, 'q': h.quantity, 'b': h.basis})
         .toList());
     final d = base64Url.encode(utf8.encode(json)).replaceAll('=', '');
-    final uri = Uri.parse('${ApiService.reportBase}/report?d=$d');
-    final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
-    if (!ok && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('無法開啟報表頁')),
+    return '${ApiService.reportBase}/report?d=$d';
+  }
+
+  void _openUrl(String url) {
+    web.window.open(url, '_blank');
+  }
+
+  Future<void> _showShareSheet() async {
+    if (_result == null || !mounted) return;
+    final reportUrl = _buildReportUrl();
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: SingleChildScrollView(
+          child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40, height: 4,
+                  decoration: BoxDecoration(
+                    color: AppTheme.divider,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text('分享',
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 4),
+              _ShareTile(
+                icon: Icons.link_rounded,
+                label: '複製連結',
+                subtitle: '複製報表網址到剪貼簿',
+                onTap: () {
+                  Navigator.pop(ctx);
+                  Clipboard.setData(ClipboardData(text: reportUrl));
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('連結已複製')),
+                    );
+                  }
+                },
+              ),
+              _ShareTile(
+                icon: Icons.description_outlined,
+                label: '開啟報表',
+                subtitle: '在新分頁開啟完整網頁報表（可列印）',
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _openUrl(reportUrl);
+                },
+              ),
+              const Divider(height: 20),
+              _ShareTile(
+                icon: Icons.chat_rounded,
+                iconColor: const Color(0xFF06C755),
+                label: 'LINE',
+                subtitle: '分享報表連結到 LINE',
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _openUrl(
+                    'https://social-plugins.line.me/lineit/share'
+                    '?url=${Uri.encodeComponent(reportUrl)}',
+                  );
+                },
+              ),
+              _ShareTile(
+                icon: Icons.facebook,
+                iconColor: const Color(0xFF1877F2),
+                label: 'Facebook',
+                subtitle: '分享報表連結到 Facebook',
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _openUrl(
+                    'https://www.facebook.com/sharer/sharer.php'
+                    '?u=${Uri.encodeComponent(reportUrl)}',
+                  );
+                },
+              ),
+              const Divider(height: 20),
+              _ShareTile(
+                icon: Icons.download_rounded,
+                label: '下載試算圖片',
+                subtitle: '儲存為 PNG，可直接分享到 IG 等社群',
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _captureAndDownloadImage();
+                },
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _captureAndDownloadImage() async {
+    try {
+      final boundary = _repaintKey.currentContext?.findRenderObject()
+          as RenderRepaintBoundary?;
+      if (boundary == null) return;
+
+      final image = await boundary.toImage(pixelRatio: 3.0);
+      final byteData =
+          await image.toByteData(format: ui.ImageByteFormat.png);
+      if (byteData == null) return;
+
+      final bytes = byteData.buffer.asUint8List();
+      final blob = web.Blob(
+        <JSAny>[bytes.toJS].toJS,
+        web.BlobPropertyBag(type: 'image/png'),
       );
+      final url = web.URL.createObjectURL(blob);
+      final anchor =
+          web.document.createElement('a') as web.HTMLAnchorElement;
+      anchor.href = url;
+      anchor.download = 'savestock_股利試算.png';
+      web.document.body!.append(anchor);
+      anchor.click();
+      anchor.remove();
+      web.URL.revokeObjectURL(url);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('圖片已下載')),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('截圖失敗，請稍後再試')),
+        );
+      }
     }
   }
 
@@ -255,67 +396,81 @@ class _DividendCalcScreenState extends State<DividendCalcScreen> {
   }
 
   Widget _buildContent() {
-    return ListView(
-      padding: const EdgeInsets.all(16),
+    return Stack(
       children: [
-        if (_result != null) ...[
-          _ResultSummary(result: _result!),
-          const SizedBox(height: 10),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: _openWebReport,
-              icon: const Icon(Icons.description_outlined, size: 20),
-              label: const Text('產生可分享網頁報表'),
+        ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            if (_result != null) ...[
+              _ResultSummary(result: _result!),
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: _showShareSheet,
+                  icon: const Icon(Icons.share_rounded, size: 20),
+                  label: const Text('分享'),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+            ],
+            Row(
+              children: [
+                const Text('我的持股',
+                    style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.textPrimary)),
+                const SizedBox(width: 6),
+                Text('（${_holdings.length} 檔）',
+                    style: const TextStyle(
+                        fontSize: 13, color: AppTheme.textSecondary)),
+              ],
+            ),
+            const SizedBox(height: 10),
+            ..._holdings.map((h) {
+              final item = _result?.items
+                  .where((it) => it.stockId == h.stockId)
+                  .cast<PortfolioItem?>()
+                  .firstWhere((it) => true, orElse: () => null);
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: _HoldingCard(
+                  holding: h,
+                  item: item,
+                  onRemove: () => _removeHolding(h),
+                  onBasisChanged: (b) => _setBasis(h, b),
+                ),
+              );
+            }),
+            const SizedBox(height: 4),
+            OutlinedButton.icon(
+              onPressed: _addHolding,
+              icon: const Icon(Icons.add_rounded, size: 20),
+              label: const Text('新增持股'),
               style: OutlinedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 12),
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12)),
               ),
             ),
-          ),
-          const SizedBox(height: 20),
-        ],
-        Row(
-          children: [
-            const Text('我的持股',
-                style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    color: AppTheme.textPrimary)),
-            const SizedBox(width: 6),
-            Text('（${_holdings.length} 檔）',
-                style: const TextStyle(
-                    fontSize: 13, color: AppTheme.textSecondary)),
           ],
         ),
-        const SizedBox(height: 10),
-        ..._holdings.map((h) {
-          final item = _result?.items
-              .where((it) => it.stockId == h.stockId)
-              .cast<PortfolioItem?>()
-              .firstWhere((it) => true, orElse: () => null);
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: _HoldingCard(
-              holding: h,
-              item: item,
-              onRemove: () => _removeHolding(h),
-              onBasisChanged: (b) => _setBasis(h, b),
+        if (_result != null)
+          Positioned(
+            left: -2000,
+            top: 0,
+            width: 375,
+            child: RepaintBoundary(
+              key: _repaintKey,
+              child: _ShareCard(result: _result!),
             ),
-          );
-        }),
-        const SizedBox(height: 4),
-        OutlinedButton.icon(
-          onPressed: _addHolding,
-          icon: const Icon(Icons.add_rounded, size: 20),
-          label: const Text('新增持股'),
-          style: OutlinedButton.styleFrom(
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),
-        ),
       ],
     );
   }
@@ -566,6 +721,253 @@ class _EmptyView extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+// ── 分享圖片卡（off-screen 渲染，供 RepaintBoundary 截圖）────────────
+class _ShareCard extends StatelessWidget {
+  final PortfolioEstimate result;
+  const _ShareCard({required this.result});
+
+  @override
+  Widget build(BuildContext context) {
+    final availableItems = result.items.where((it) => it.available).toList();
+    final year = DateTime.now().year;
+    return Container(
+      width: 375,
+      color: Colors.white,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Header
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+            child: Row(
+              children: [
+                const Icon(Icons.savings_rounded,
+                    color: AppTheme.primary, size: 20),
+                const SizedBox(width: 8),
+                const Text('Savestock',
+                    style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        color: AppTheme.primary)),
+                const Spacer(),
+                Text('$year 年度股利試算',
+                    style: const TextStyle(
+                        fontSize: 12, color: AppTheme.textSecondary)),
+              ],
+            ),
+          ),
+          // Summary gradient card
+          Container(
+            width: double.infinity,
+            margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [AppTheme.primary, AppTheme.primary.withOpacity(0.78)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(AppTheme.cardRadius),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('今年度預估可領股利',
+                    style: TextStyle(color: Colors.white70, fontSize: 12)),
+                const SizedBox(height: 4),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.baseline,
+                  textBaseline: TextBaseline.alphabetic,
+                  children: [
+                    const Text('NT\$ ',
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600)),
+                    Text(_money(result.total),
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 28,
+                            fontWeight: FontWeight.w800)),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '今年已實際除息 NT\$ ${_money(result.totalPaidThisYear)}',
+                  style:
+                      const TextStyle(color: Colors.white70, fontSize: 11.5),
+                ),
+              ],
+            ),
+          ),
+          // Holdings
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('持股明細',
+                    style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.textPrimary)),
+                const SizedBox(height: 8),
+                ...availableItems.map((it) => Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: _ShareHoldingRow(item: it),
+                    )),
+                if (result.unavailable.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2, bottom: 4),
+                    child: Text(
+                      '查無資料：${result.unavailable.map((e) => e.code).join('、')}',
+                      style: const TextStyle(
+                          fontSize: 11, color: AppTheme.alertRed),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          // Footer
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            decoration: const BoxDecoration(
+              border: Border(top: BorderSide(color: AppTheme.divider)),
+            ),
+            child: const Center(
+              child: Text('savestock.netlify.app',
+                  style: TextStyle(
+                      fontSize: 11, color: AppTheme.textSecondary)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ShareHoldingRow extends StatelessWidget {
+  final PortfolioItem item;
+  const _ShareHoldingRow({required this.item});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(item.name,
+                    style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.textPrimary)),
+                Row(
+                  children: [
+                    Text(item.code,
+                        style: const TextStyle(
+                            fontSize: 11.5, color: AppTheme.textSecondary)),
+                    const SizedBox(width: 4),
+                    Text('${item.quantity} 股',
+                        style: const TextStyle(
+                            fontSize: 11.5, color: AppTheme.textSecondary)),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text('NT\$ ${_money(item.amount)}',
+                  style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                      color: AppTheme.primary)),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('每股 ${item.perShare.toStringAsFixed(2)}',
+                      style: const TextStyle(
+                          fontSize: 11, color: AppTheme.textSecondary)),
+                  const SizedBox(width: 4),
+                  if (item.isAnnounced)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 5, vertical: 1),
+                      decoration: BoxDecoration(
+                        color: AppTheme.gainGreen.withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: const Text('已公告',
+                          style: TextStyle(
+                              fontSize: 10,
+                              color: AppTheme.gainGreen,
+                              fontWeight: FontWeight.w600)),
+                    )
+                  else
+                    const Text('估算',
+                        style: TextStyle(
+                            fontSize: 10, color: AppTheme.textSecondary)),
+                ],
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── 分享選項列 ────────────────────────────────────────────────────
+class _ShareTile extends StatelessWidget {
+  final IconData icon;
+  final Color? iconColor;
+  final String label;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  const _ShareTile({
+    required this.icon,
+    this.iconColor,
+    required this.label,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = iconColor ?? AppTheme.primary;
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: Container(
+        width: 44,
+        height: 44,
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Icon(icon, color: color, size: 22),
+      ),
+      title: Text(label,
+          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+      subtitle: Text(subtitle,
+          style: const TextStyle(
+              fontSize: 12.5, color: AppTheme.textSecondary)),
+      onTap: onTap,
     );
   }
 }
