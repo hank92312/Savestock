@@ -33,33 +33,24 @@
 
 | 資源 | 服務/網址 | 狀態 |
 |---|---|---|
-| 前端 | https://savestock.netlify.app | ✅ 含分享功能（**尚未部署本次改動**，僅本地驗收） |
+| 前端 | https://savestock.netlify.app | ✅ 分享功能已部署上線（deploy `6a2ff7bf`，2026-06-15） |
 | 後端 API | `savestock-api`（Cloud Run，min=1）<br>https://savestock-api-62102931839.asia-east1.run.app | ✅ revision 00023（含 CORS localhost regex） |
 | 報表服務 | `savestock-report`（Cloud Run，min=0）<br>https://savestock-report-62102931839.asia-east1.run.app | ✅ revision 00004 |
 | 資料庫 | Neon PostgreSQL（免費） | ✅ |
 | ETL 排程 | Cloud Scheduler `savestock-etl-daily`（週一至五 15:00） | ✅ |
 
-> **前端尚未部署到 Netlify**：本次改動已在本地（`flutter run -d chrome`）驗收分享 Sheet + 下載圖片正常。下一 session 驗收完畢後再部署，節省 Netlify credits（每次 production deploy 耗 15 credits）。
+> **前端已部署**：分享功能於 2026-06-15 部署上線（Netlify deploy `6a2ff7bf`）。驗證：`flutter analyze` 無錯誤、後端 pytest 7 passed、`flutter build web --release` 成功；分享 Sheet、開啟報表、複製連結、下載試算圖片本地皆驗收正常（LINE/FB 走相同 `window.open` 路徑）。
 
 ---
 
-## 3. ⏳ 待下一 session 驗證與部署
+## 3. ✅ 驗證與部署（已完成 2026-06-15）
 
-### 驗收清單（本地 `flutter run -d chrome`）
-1. 計算後按「分享」→ 底部 Sheet 出現 5 個選項（複製連結、開啟報表、LINE、Facebook、下載試算圖片）。
-2. 「開啟報表」→ 新分頁直接開啟 Django 報表（不再顯示 SnackBar 錯誤）。
-3. 「複製連結」→ 剪貼簿有 `https://savestock-report-.../report?d=...` 格式網址。
-4. 「LINE」→ 開啟 LINE 分享對話框（新分頁）。
-5. 「Facebook」→ 開啟 FB sharer 新分頁。
-6. 「下載試算圖片」→ 瀏覽器下載 `savestock_股利試算.png`，內含持股明細。
+- `flutter analyze`：無錯誤（僅原有 `withOpacity` deprecation 提示）
+- 後端 pytest：7 passed
+- `flutter build web --release`：成功
+- 已 `netlify deploy --prod`（deploy `6a2ff7bf`）→ https://savestock.netlify.app
 
-### 驗收完成後部署前端
-```powershell
-cd C:\Savestock\frontend
-flutter build web --release
-cd C:\Savestock\frontend\build\web
-netlify deploy --prod --dir=. --site=ebec3bc6-8ea5-4131-98b0-e08c54aaaac8
-```
+> 生產驗收建議：在 https://savestock.netlify.app 按 **Ctrl+Shift+R** 換新版後，至「股利試算」計算 → 按「分享」確認 5 個選項與下載圖片正常。
 
 ---
 
