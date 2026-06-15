@@ -29,30 +29,43 @@ HIGH_IMPACT_FALLBACK_TOP_N = 3
 
 # 估算提示文字（FastAPI 與 Django 報表共用，確保口徑一致）
 DISCLAIMER = (
-    "本估算以歷史股利資料推算（近1年或近5年平均），僅供參考，並非投資建議。"
-    "實際可領金額會因公司正式公布配息、除息與否而變動。"
-    "「今年已除息」為今年實際已配發金額；尚未除息或公司調整配息政策時，全年實際金額可能與估算不同。"
+    "標示「已公告」者採用公司今年正式公告之全年配息（年配股，資料來源證交所）；"
+    "其餘以歷史股利推算（近1年或近5年平均），僅供參考，並非投資建議。"
+    "季配／半年配個股年中尚無法得知全年完整配息，故以估算為準；"
+    "實際可領金額會因公司公布配息、除息與否而變動。「今年已除息」為今年實際已配發金額。"
 )
+
+
+BASIS_ANNOUNCED = "announced"  # 已公告（實際公告值，非估算）
 
 
 @dataclass
 class StockDividendData:
-    """單檔股票的股利資料（由呼叫端從 DB / yfinance 準備好餵入）。
+    """單檔股票的股利資料（由呼叫端從 DB / yfinance / 證交所公告準備好餵入）。
 
-    paid_this_year：今年已除息每股合計（實際值，僅供併列顯示，不參與全年估算）。
+    announced_this_year：今年已公告之全年配息（年配股，來自證交所 t187ap45_L）；
+        非 None 時為實際公告值，優先於估算（Phase 3）。
+    paid_this_year：今年已除息每股合計（實際值，僅供併列顯示）。
     """
     stock_id: str
     name: str
     dividend_1y: Optional[float]
     avg_dividend_5y: Optional[float]
     paid_this_year: Optional[float]
+    announced_this_year: Optional[float] = None
 
 
-def _per_share_estimate(data: StockDividendData, basis: str):
-    """依基準回傳 (每股估算股利, 實際使用基準)。預設與非法值皆退回近一年。"""
+def _resolve_per_share(data: StockDividendData, basis: str):
+    """回傳 (每股股利, 來源, 是否為估算)。
+
+    優先序：今年已公告全年配息 > 使用者選的估算基準（近1年 / 近5年平均）。
+    已公告為實際值（不確定性最低），永遠優先。
+    """
+    if data.announced_this_year is not None:
+        return data.announced_this_year, BASIS_ANNOUNCED, False
     if basis == BASIS_5Y:
-        return (data.avg_dividend_5y or 0.0), BASIS_5Y
-    return (data.dividend_1y or 0.0), BASIS_1Y
+        return (data.avg_dividend_5y or 0.0), BASIS_5Y, True
+    return (data.dividend_1y or 0.0), BASIS_1Y, True
 
 
 def estimate_portfolio(holdings, stock_data):
@@ -76,17 +89,20 @@ def estimate_portfolio(holdings, stock_data):
         if data is None:
             items.append({
                 "stock_id": sid, "name": sid, "quantity": qty,
-                "per_share": 0.0, "basis": None, "amount": 0.0,
-                "paid_this_year": 0.0, "available": False,
+                "per_share": 0.0, "source": None, "is_estimated": False,
+                "amount": 0.0, "paid_this_year": 0.0, "available": False,
             })
             continue
-        per_share, basis = _per_share_estimate(data, h.get("basis", BASIS_1Y))
+        per_share, source, is_estimated = _resolve_per_share(
+            data, h.get("basis", BASIS_1Y)
+        )
         amount = per_share * qty
         total += amount
         paid = (data.paid_this_year or 0.0) * qty
         items.append({
             "stock_id": data.stock_id, "name": data.name, "quantity": qty,
-            "per_share": round(per_share, 4), "basis": basis,
+            "per_share": round(per_share, 4),
+            "source": source, "is_estimated": is_estimated,
             "amount": round(amount, 2),
             "paid_this_year": round(paid, 2),
             "available": True,
@@ -95,15 +111,15 @@ def estimate_portfolio(holdings, stock_data):
     for it in items:
         it["share_pct"] = round(it["amount"] / total * 100, 2) if total > 0 else 0.0
 
-    # 影響較大：可估算個股依金額由大到小，取占比 ≥ 門檻者；
-    # 若無人跨門檻，退而取前 N 大，確保使用者至少看到要注意哪幾檔。
-    ranked = sorted(
-        [it for it in items if it["available"]],
+    # 影響較大：聚焦「估算（非已公告）」個股——已公告為確定值，不確定的才需提醒。
+    # 依金額由大到小，取占比 ≥ 門檻者；若無人跨門檻，退而取前 N 大。
+    estimated = sorted(
+        [it for it in items if it["available"] and it["is_estimated"]],
         key=lambda x: x["amount"], reverse=True,
     )
-    high_impact = [it for it in ranked if it["share_pct"] >= HIGH_IMPACT_SHARE_THRESHOLD]
+    high_impact = [it for it in estimated if it["share_pct"] >= HIGH_IMPACT_SHARE_THRESHOLD]
     if not high_impact:
-        high_impact = ranked[:HIGH_IMPACT_FALLBACK_TOP_N]
+        high_impact = estimated[:HIGH_IMPACT_FALLBACK_TOP_N]
 
     return {
         "total": round(total, 2),

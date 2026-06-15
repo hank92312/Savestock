@@ -432,9 +432,18 @@ class _HoldingCard extends StatelessWidget {
                             fontSize: 16,
                             fontWeight: FontWeight.w800,
                             color: AppTheme.primary)),
-                    Text('每股 ${item!.perShare.toStringAsFixed(2)}',
-                        style: const TextStyle(
-                            fontSize: 11.5, color: AppTheme.textSecondary)),
+                    Text(
+                        item!.isAnnounced
+                            ? '每股 ${item!.perShare.toStringAsFixed(2)}・已公告'
+                            : '每股 ${item!.perShare.toStringAsFixed(2)}',
+                        style: TextStyle(
+                            fontSize: 11.5,
+                            color: item!.isAnnounced
+                                ? AppTheme.gainGreen
+                                : AppTheme.textSecondary,
+                            fontWeight: item!.isAnnounced
+                                ? FontWeight.w600
+                                : FontWeight.normal)),
                   ],
                 ),
               IconButton(

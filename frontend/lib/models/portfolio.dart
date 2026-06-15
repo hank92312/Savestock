@@ -60,9 +60,10 @@ class PortfolioItem {
   final String stockId;
   final String name;
   final int quantity;
-  final double perShare; // 每股估算股利
-  final String? basis;
-  final double amount; // 全年估算金額
+  final double perShare; // 每股股利
+  final String? source; // "announced" | "1y" | "5y"
+  final bool isEstimated; // 已公告為 false
+  final double amount; // 全年金額
   final double paidThisYear; // 今年已實際除息金額（資訊）
   final double sharePct; // 占總額比重
   final bool available; // 查無資料時為 false
@@ -72,7 +73,8 @@ class PortfolioItem {
     required this.name,
     required this.quantity,
     required this.perShare,
-    required this.basis,
+    required this.source,
+    required this.isEstimated,
     required this.amount,
     required this.paidThisYear,
     required this.sharePct,
@@ -84,7 +86,8 @@ class PortfolioItem {
         name: j['name'] as String? ?? j['stock_id'] as String,
         quantity: (j['quantity'] as num).toInt(),
         perShare: (j['per_share'] as num?)?.toDouble() ?? 0,
-        basis: j['basis'] as String?,
+        source: j['source'] as String?,
+        isEstimated: j['is_estimated'] as bool? ?? true,
         amount: (j['amount'] as num?)?.toDouble() ?? 0,
         paidThisYear: (j['paid_this_year'] as num?)?.toDouble() ?? 0,
         sharePct: (j['share_pct'] as num?)?.toDouble() ?? 0,
@@ -92,6 +95,9 @@ class PortfolioItem {
       );
 
   String get code => stockId.replaceAll(RegExp(r'\.(TW|TWO)$'), '');
+
+  /// 是否採用已公告值
+  bool get isAnnounced => source == 'announced';
 }
 
 class PortfolioEstimate {

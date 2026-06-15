@@ -16,6 +16,7 @@ from routers.stocks import _fetch_and_upsert
 from core.dividend_calc import (
     StockDividendData, estimate_portfolio, VALID_BASIS, BASIS_1Y, DISCLAIMER,
 )
+from core.twse_dividends import fetch_announced_annual
 
 router = APIRouter(prefix="/portfolio", tags=["portfolio"])
 
@@ -36,6 +37,7 @@ class EstimateRequest(BaseModel):
 def _build_stock_data(stock_ids, conn):
     """查 DB 組出 {sid: StockDividendData}；回傳 (資料字典, DB 缺漏清單)。"""
     year_start = date(date.today().year, 1, 1)
+    announced = fetch_announced_annual()  # 證交所已公告年配股（快取，失敗回空）
     result = {}
     missing = []
     for sid in stock_ids:
@@ -52,12 +54,15 @@ def _build_stock_data(stock_ids, conn):
             FROM Dividends WHERE Stock_ID = :sid AND Ex_Date >= :ys
         """), {"sid": sid, "ys": str(year_start)}).scalar()
         m = row._mapping
+        code = sid.replace(".TWO", "").replace(".TW", "")
+        ann = announced.get(code)
         result[sid] = StockDividendData(
             stock_id=m.get("stock_id"),
             name=m.get("name"),
             dividend_1y=m.get("dividend_1y"),
             avg_dividend_5y=m.get("avg_dividend_5y"),
             paid_this_year=float(paid) if paid and paid > 0 else None,
+            announced_this_year=ann["amount"] if ann else None,
         )
     return result, missing
 

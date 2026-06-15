@@ -19,6 +19,7 @@ from core.dividend_calc import (
     VALID_BASIS,
     BASIS_1Y,
 )
+from core.twse_dividends import fetch_announced_annual
 
 from .models import Dividend, StockMaster
 
@@ -55,6 +56,7 @@ def _build_stock_data(stock_ids):
     """以 ORM 讀 Neon，組出 {sid: StockDividendData}。"""
     year_start = date(date.today().year, 1, 1)
     masters = {m.stock_id: m for m in StockMaster.objects.filter(stock_id__in=stock_ids)}
+    announced = fetch_announced_annual()  # 證交所已公告年配股（快取，失敗回空）
     result = {}
     for sid in stock_ids:
         m = masters.get(sid)
@@ -64,12 +66,15 @@ def _build_stock_data(stock_ids):
             c=Sum("cash_dividend"), s=Sum("stock_dividend")
         )
         paid = (agg["c"] or 0) + (agg["s"] or 0)
+        code = sid.replace(".TWO", "").replace(".TW", "")
+        ann = announced.get(code)
         result[sid] = StockDividendData(
             stock_id=m.stock_id,
             name=m.name,
             dividend_1y=m.dividend_1y,
             avg_dividend_5y=m.avg_dividend_5y,
             paid_this_year=paid if paid > 0 else None,
+            announced_this_year=ann["amount"] if ann else None,
         )
     return result
 

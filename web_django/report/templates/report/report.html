@@ -107,7 +107,7 @@
               </td>
               {% if item.available %}
               <td>{{ item.quantity|intcomma }}</td>
-              <td>{% if item.basis == "5y" %}近5年均{% else %}近1年{% endif %}</td>
+              <td>{% if item.source == "announced" %}<span class="badge" style="background:rgba(46,125,50,.12);color:#2E7D32">已公告</span>{% elif item.source == "5y" %}近5年均{% else %}近1年{% endif %}</td>
               <td>{{ item.per_share|floatformat:2 }}</td>
               <td class="amount-cell">{{ item.amount|floatformat:0|intcomma }}</td>
               <td>{{ item.share_pct|floatformat:1 }}%</td>

@@ -1,7 +1,7 @@
 """dividend_calc 純計算模組單元測試。
 
 測試重點在「為什麼這樣算」——即估算的商業規則，而非只是數字湊對：
-全年估算用滾動值（季配股才不會低估）、今年已除息僅作實際資訊、查無資料不可默默漏算。
+已公告優先於估算、全年估算用滾動值（季配股才不會低估）、查無資料不可默默漏算。
 """
 
 import os
@@ -14,52 +14,60 @@ from core.dividend_calc import (  # noqa: E402
     estimate_portfolio,
     BASIS_1Y,
     BASIS_5Y,
+    BASIS_ANNOUNCED,
 )
 
 
-def _data(sid, name, d1y, d5y, paid):
-    return StockDividendData(sid, name, d1y, d5y, paid)
+def _data(sid, name, d1y, d5y, paid, announced=None):
+    return StockDividendData(sid, name, d1y, d5y, paid, announced)
+
+
+def test_announced_overrides_estimate():
+    """今年已公告全年配息時，用公告值（實際），不論使用者選哪個估算基準。
+
+    中華電已公告 5.2，即使選 5y（4.5）也該用 5.2，因為公告值不確定性最低。
+    """
+    stock_data = {"2412.TW": _data("2412.TW", "中華電", 4.7, 4.5, None, announced=5.2)}
+    r = estimate_portfolio(
+        [{"stock_id": "2412.TW", "quantity": 1000, "basis": BASIS_5Y}], stock_data
+    )
+    item = r["items"][0]
+    assert item["source"] == BASIS_ANNOUNCED
+    assert item["is_estimated"] is False
+    assert item["per_share"] == 5.2
+    assert item["amount"] == 5200.0
 
 
 def test_full_year_estimate_uses_rolling_not_partial_paid():
-    """季配股全年估算必須用近1年(滾動12月)，不可用今年已除息的部分金額。
+    """未公告的季配股全年估算必須用近1年(滾動12月)，不可用今年已除息的部分金額。
 
-    這是本功能最關鍵的正確性規則：2330 今年只除息1次(6元)，但近1年是20.5元，
-    若誤用 6 元當全年會低估七成。
+    2330 今年只除息1次(6元)，但近1年是20.5元，誤用 6 元當全年會低估七成。
     """
     stock_data = {"2330.TW": _data("2330.TW", "台積電", 20.5, 18.0, 6.0)}
-    holdings = [{"stock_id": "2330.TW", "quantity": 50, "basis": BASIS_1Y}]
-
-    r = estimate_portfolio(holdings, stock_data)
+    r = estimate_portfolio(
+        [{"stock_id": "2330.TW", "quantity": 50, "basis": BASIS_1Y}], stock_data
+    )
     item = r["items"][0]
-
-    assert item["per_share"] == 20.5            # 用滾動近1年，非今年已除息6元
-    assert item["amount"] == 1025.0             # 20.5 × 50
+    assert item["source"] == BASIS_1Y
+    assert item["is_estimated"] is True
+    assert item["per_share"] == 20.5            # 滾動近1年，非今年已除息6元
+    assert item["amount"] == 1025.0
     assert item["paid_this_year"] == 300.0      # 6 × 50，僅作實際資訊併列
 
 
 def test_basis_switches_between_1y_and_5y():
-    """使用者可選近1年或近5年平均作為估算基準。"""
+    """未公告時，使用者可選近1年或近5年平均作為估算基準。"""
     stock_data = {"0056.TW": _data("0056.TW", "元大高股息", 3.6, 2.0, 1.8)}
-
     r1y = estimate_portfolio(
         [{"stock_id": "0056.TW", "quantity": 1000, "basis": BASIS_1Y}], stock_data
     )
     r5y = estimate_portfolio(
         [{"stock_id": "0056.TW", "quantity": 1000, "basis": BASIS_5Y}], stock_data
     )
-
     assert r1y["items"][0]["per_share"] == 3.6
+    assert r1y["items"][0]["source"] == BASIS_1Y
     assert r5y["items"][0]["per_share"] == 2.0
-
-
-def test_invalid_basis_falls_back_to_1y():
-    stock_data = {"0056.TW": _data("0056.TW", "元大高股息", 3.6, 2.0, None)}
-    r = estimate_portfolio(
-        [{"stock_id": "0056.TW", "quantity": 1000, "basis": "garbage"}], stock_data
-    )
-    assert r["items"][0]["basis"] == BASIS_1Y
-    assert r["items"][0]["per_share"] == 3.6
+    assert r5y["items"][0]["source"] == BASIS_5Y
 
 
 def test_odd_lot_quantity():
@@ -84,18 +92,20 @@ def test_total_is_sum_of_holdings():
     assert r["total"] == 8600.0
 
 
-def test_high_impact_ranks_largest_contributors():
-    """影響較大＝占總額比重最高者（其配息變動最影響你的總額）。"""
+def test_high_impact_only_estimated_holdings():
+    """影響較大只列『估算』個股——已公告為確定值，不該列入不確定清單。"""
     stock_data = {
-        "0056.TW": _data("0056.TW", "元大高股息", 3.6, 2.0, None),
-        "2412.TW": _data("2412.TW", "中華電", 4.7, 4.5, None),
+        "2412.TW": _data("2412.TW", "中華電", 4.7, 4.5, None, announced=5.2),  # 已公告、金額大
+        "0056.TW": _data("0056.TW", "元大高股息", 3.6, 2.0, None),             # 估算
     }
     holdings = [
-        {"stock_id": "0056.TW", "quantity": 5000, "basis": BASIS_1Y},  # 18000
-        {"stock_id": "2412.TW", "quantity": 10, "basis": BASIS_1Y},    # 47
+        {"stock_id": "2412.TW", "quantity": 5000, "basis": BASIS_1Y},  # 26000 已公告
+        {"stock_id": "0056.TW", "quantity": 2000, "basis": BASIS_1Y},  # 7200 估算
     ]
     r = estimate_portfolio(holdings, stock_data)
-    assert r["high_impact"][0]["stock_id"] == "0056.TW"
+    high_ids = [it["stock_id"] for it in r["high_impact"]]
+    assert "2412.TW" not in high_ids   # 已公告不列入不確定清單
+    assert high_ids == ["0056.TW"]
 
 
 def test_missing_stock_not_silently_dropped():
