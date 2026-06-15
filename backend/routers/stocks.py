@@ -227,7 +227,10 @@ def _dividend_1y(actions) -> float:
     total_series = _total_div_series(actions)
     if total_series is None:
         return 0.0
-    one_year_ago = datetime.now() - timedelta(days=365)
+    # 用 358 天（一年扣 ~7 天漂移緩衝）：台股除權息日每年常提前約 1 天，
+    # 若用滿 365 天，當 refresh 落在新除權息日當天，去年同期那筆會仍 <365 天
+    # 被一併計入，多算第 5 筆（如 2330 在 2026-06-11 算成 26.5，應為 22）。
+    one_year_ago = datetime.now() - timedelta(days=358)
     if actions.index.tzinfo:
         one_year_ago = one_year_ago.replace(tzinfo=actions.index.tzinfo)
     recent = total_series[total_series.index > one_year_ago]

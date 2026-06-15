@@ -132,7 +132,10 @@ def fetch_stock_data(stock_id: str, name: str, sector: str):
     if not actions.empty:
         has_cash = 'Dividends' in actions.columns
         has_split = 'Stock Splits' in actions.columns
-        one_year_ago = datetime.now() - timedelta(days=365)
+        # 358 天（一年扣 ~7 天漂移緩衝）：與後端 _dividend_1y 口徑一致。
+        # 台股除權息日每年常提前約 1 天，用滿 365 天會在 refresh 落於新除權息日
+        # 當天把去年同期那筆一併計入，多算第 5 筆（2330 曾算成 26.5，應為 22）。
+        one_year_ago = datetime.now() - timedelta(days=358)
         if actions.index.tzinfo:
             one_year_ago = one_year_ago.replace(tzinfo=actions.index.tzinfo)
         for ts in actions.index:
