@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../models/stock.dart';
+import '../models/portfolio.dart';
 
 class PricePoint {
   final DateTime date;
@@ -165,5 +166,29 @@ class ApiService {
     final body = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
     final List stocks = body['stocks'] as List;
     return stocks.map((e) => Stock.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  /// 估算投資組合的今年度可領股利。
+  /// 不在 DB 的股票後端會即時補抓（可能較慢，故 timeout 放寬）。
+  static Future<PortfolioEstimate> estimatePortfolio(
+      List<Holding> holdings) async {
+    final res = await http
+        .post(
+          Uri.parse('$_base/portfolio/estimate'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'holdings': holdings
+                .map((h) => {
+                      'stock_id': h.stockId,
+                      'quantity': h.quantity,
+                      'basis': h.basis,
+                    })
+                .toList(),
+          }),
+        )
+        .timeout(const Duration(seconds: 90));
+    if (res.statusCode != 200) throw Exception('估算失敗 (${res.statusCode})');
+    return PortfolioEstimate.fromJson(
+        jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>);
   }
 }

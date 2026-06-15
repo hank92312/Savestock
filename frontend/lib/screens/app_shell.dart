@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import 'home_screen.dart';
 import 'my_stocks_screen.dart';
+import 'dividend_calc_screen.dart';
 import 'onboarding_screen.dart';
 
 class AppShell extends StatefulWidget {
@@ -17,6 +18,7 @@ class _AppShellState extends State<AppShell> {
   static const _screens = [
     HomeScreen(),
     MyStocksScreen(),
+    DividendCalcScreen(),
   ];
 
   @override
@@ -62,6 +64,11 @@ class _AppShellState extends State<AppShell> {
             icon: Icon(Icons.bookmark_outline_rounded),
             selectedIcon: Icon(Icons.bookmark_rounded),
             label: '我的股票',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.savings_outlined),
+            selectedIcon: Icon(Icons.savings_rounded),
+            label: '股利試算',
           ),
         ],
       ),
