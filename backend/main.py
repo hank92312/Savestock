@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from routers.stocks import router as stocks_router
 from routers.users import router as users_router
+from routers.portfolio import router as portfolio_router
 
 app = FastAPI(title="Savestock API", version="1.0.0")
 
@@ -15,6 +16,7 @@ app.add_middleware(
 
 app.include_router(stocks_router)
 app.include_router(users_router)
+app.include_router(portfolio_router)
 
 
 @app.get("/")
