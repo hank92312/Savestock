@@ -1,6 +1,6 @@
 # 專案架構文件：Savestock（長線存股防護系統）
 
-> 最後更新：2026-06-11（效能大幅優化 + 資料庫遷移至 Neon + ETL 排程上線）
+> 最後更新：2026-06-15（個人年度股利試算 Phase 1 上線：共用計算模組 + 試算分頁）
 > 本文件為專案的單一入口參考：看完即可掌握整體內容與架構。
 > 細部待辦與部署決策見 [TODONEXT.md](TODONEXT.md)。
 > 雲端部署現況見 [第 7 節](#7-雲端部署現況gcp)。
@@ -49,7 +49,8 @@ Yahoo 財經 ──(yfinance)──> ETL 批次運算 ──> savestock.db
 
 ### 3.2 後端 API（`backend/`）
 * 入口 `main.py`（CORS `allow_origins=["https://savestock.netlify.app"]`）、`database.py`（`engine` + `get_db()`，以 `engine.begin()` 自動 commit/rollback；`.strip()` 防 Secret Manager 換行）。
-* 路由：`routers/stocks.py`、`routers/users.py`。
+* 路由：`routers/stocks.py`、`routers/users.py`、`routers/portfolio.py`。
+* **共用計算層 `core/`**：框架無關的純 Python 模組（如 `dividend_calc.py`），供 FastAPI 與未來 Django 報表共用同一份股利口徑，避免邏輯多份維護。附 `tests/`（pytest）。
 
 | Method | 路徑 | 說明 |
 | --- | --- | --- |
@@ -66,6 +67,7 @@ Yahoo 財經 ──(yfinance)──> ETL 批次運算 ──> savestock.db
 | POST | `/users/{uid}/watchlist` | 加入自選（檢查方案上限，超過回 403） |
 | DELETE | `/users/{uid}/watchlist/{sid}` | 移除自選 |
 | POST | `/users/{uid}/watchlist/refresh` | 即時刷新自選並回傳（依殖利率降序）；**並行抓取（max 5 threads）**，10 檔 ~50 秒 |
+| POST | `/portfolio/estimate` | 個人年度股利試算：傳入持股清單（`stock_id`/`quantity`/`basis`），回傳全年估算總額、各檔明細、今年已除息、影響較大個股；DB 缺漏股票並行補抓 |
 
 * **搜尋快取**：來源 TWSE `STOCK_DAY_ALL`（含 ETF 如 0050），24h TTL；上櫃不在範圍。
 * **自選股共用補抓**：`_fetch_and_upsert()` 供 lookup 與 watchlist/refresh 共用（即時 yfinance 更新、補 1 年歷史、自選股以 3% 跌幅＋2.5× 量警示）。
@@ -90,15 +92,17 @@ Yahoo 財經 ──(yfinance)──> ETL 批次運算 ──> savestock.db
 | --- | --- |
 | `main.dart` | 入口；`MaterialApp` + 自訂 `ScrollBehavior`（讓 web/桌機滑鼠可拖曳捲動） |
 | `screens/onboarding_screen.dart` | **教學導覽**（首次自動顯示、❓可重看；殖利率→用法→警示→免責） |
-| `screens/app_shell.dart` | 底部導覽（預設清單／我的股票）＋首次啟動導覽判斷 |
+| `screens/app_shell.dart` | 底部導覽（預設清單／我的股票／股利試算）＋首次啟動導覽判斷 |
 | `screens/home_screen.dart` | 預設清單、產業篩選 Chip、響應式佈局、下拉刷新、❓教學入口 |
 | `screens/my_stocks_screen.dart` | 自選清單、**開啟用 DB 快速載入（<1 秒）**、🔄 按鈕才即時抓 yfinance、刪除鈕（＋左滑刪除）、外部加入即時同步 |
 | `screens/add_stock_screen.dart` | 模糊搜尋＋候選清單＋無結果直接查詢＋已追蹤標記 |
 | `screens/stock_detail_screen.dart` | 殖利率大字（近1年＋近2年並列）、數據卡（兩種股利＋新上市提示）、AppBar「加入我的股票」書籤鈕、收盤價折線圖＋股利折線圖（半年/1年/2年）、警示卡 |
+| `screens/dividend_calc_screen.dart` | **年度股利試算**：輸入持股（搜尋選股＋股數，含零股）→ 估算今年可領股利；持股存裝置端、自動回填；估算後彈提示窗（歷史估算說明＋影響較大個股） |
 | `services/watchlist_notifier.dart` | 加入自選後跨畫面即時通知「我的股票」重抓清單（singleton ChangeNotifier） |
+| `services/portfolio_service.dart` | 試算持股清單的裝置端儲存（shared_preferences，與 UUID 同機制） |
 | `widgets/stock_card.dart`, `widgets/sector_badge.dart` | 共用股票卡（現價下方顯示「截至 MM/DD」資料日期）、產業標籤 |
 | `services/api_service.dart`, `services/user_service.dart` | API 呼叫層、UUID 與 user_id 本地管理 |
-| `models/stock.dart` | `Stock`（含 `listingMonths` / `isNewListing`） |
+| `models/stock.dart`, `models/portfolio.dart` | `Stock`；`Holding` / `PortfolioItem` / `PortfolioEstimate`（試算模型） |
 | `theme/app_theme.dart` | 全域樣式 |
 
 ---
@@ -117,6 +121,12 @@ Yahoo 財經 ──(yfinance)──> ETL 批次運算 ──> savestock.db
 ### 殖利率
 * **清單顯示與排序**：以**近一年殖利率**（`Dividend_1Y ÷ 最新收盤價`）為主，清單與自選皆依此**降序**排列；卡片股利欄顯示「近1年股利」（不滿 12 月標「近 X 月股利」）。
 * **詳情頁**：同時並列**近一年殖利率**與**近2年平均殖利率**（2 年平均為保守參考，揭露配息陷阱）；數據卡同時顯示近1年股利與近2年平均股利，不滿 1/2 年改標「近 X 月／上市迄今平均」並加邊界提示。
+
+### 個人年度股利試算（`core/dividend_calc.py`）
+* **全年估算基準**：使用者每檔可選「近1年（`Dividend_1Y`，滾動 12 月）」或「近5年平均（`Avg_Dividend_5Y`）」。
+* **為何不用「今年已除息」當全年值**：yfinance 只提供已除息歷史，今年「已公告未除息」抓不到；且季配／半年配個股（0056、2330）年中時「今年已除息」只是部分金額，當全年會嚴重低估。故全年估算一律用滾動值，「今年已除息」僅作實際資訊併列。真正的「今年已公布全年配息」需另接 MOPS（Phase 3）。
+* **影響較大個股**：占估算總額比重 ≥ 10% 者（無人跨門檻則取前 3 大），其配息變動最影響總額，於估算後提示窗列出。
+* 純函式設計、不依賴框架／DB，FastAPI 與未來 Django 共用；附 7 個單元測試（季配股不低估、basis 切換、零股、查無資料 fail loud）。
 
 ### 異常警示（防高殖利率陷阱）
 1. **單日暴跌**（依產業分級閾值）：
@@ -164,10 +174,12 @@ Yahoo 財經 ──(yfinance)──> ETL 批次運算 ──> savestock.db
   * `watchlist/refresh` 改並行抓取（ThreadPoolExecutor max 5），10 檔從 250 秒縮至 ~50 秒，修復 504 timeout。
   * 股票卡片加「截至 MM/DD」資料日期標籤。
   * `pool_pre_ping` 修復 Neon 閒置連線 SSL 斷線錯誤。
+* **個人年度股利試算 Phase 1**（2026-06-15）：`core/dividend_calc.py` 共用計算模組（+7 單元測試）、`POST /portfolio/estimate`、Flutter「股利試算」分頁（持股存裝置端、自動回填、估算提示窗）。已部署上線。
 
 ### ⏳ 待辦
+* **個人年度股利試算 Phase 2**：Django 報表頁（可分享/可列印）+ Django Admin 管理股利資料（另開 Cloud Run 服務，`min-instances=0`）。
+* **個人年度股利試算 Phase 3**：接 MOPS 公開資訊觀測站，補「已公告未除息」配息，提升「今年已公布」準確度。
 * 通知系統接線（`User_Preferences` 已備欄位）。
-* 明日驗證（2026-06-12）：Neon SSL 修復確認、排程自動執行確認（見 TODONEXT.md）。
 
 ---
 
