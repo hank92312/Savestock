@@ -27,6 +27,13 @@ HIGH_IMPACT_SHARE_THRESHOLD = 10.0  # 百分比
 # 若無個股跨過門檻，至少列出金額最大的前 N 檔，確保使用者知道該注意誰
 HIGH_IMPACT_FALLBACK_TOP_N = 3
 
+# 估算提示文字（FastAPI 與 Django 報表共用，確保口徑一致）
+DISCLAIMER = (
+    "本估算以歷史股利資料推算（近1年或近5年平均），僅供參考，並非投資建議。"
+    "實際可領金額會因公司正式公布配息、除息與否而變動。"
+    "「今年已除息」為今年實際已配發金額；尚未除息或公司調整配息政策時，全年實際金額可能與估算不同。"
+)
+
 
 @dataclass
 class StockDividendData:

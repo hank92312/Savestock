@@ -13,15 +13,11 @@ from concurrent.futures import ThreadPoolExecutor
 
 from database import get_db, engine
 from routers.stocks import _fetch_and_upsert
-from core.dividend_calc import StockDividendData, estimate_portfolio, VALID_BASIS, BASIS_1Y
+from core.dividend_calc import (
+    StockDividendData, estimate_portfolio, VALID_BASIS, BASIS_1Y, DISCLAIMER,
+)
 
 router = APIRouter(prefix="/portfolio", tags=["portfolio"])
-
-_DISCLAIMER = (
-    "本估算以歷史股利資料推算（近1年或近5年平均），僅供參考，並非投資建議。"
-    "實際可領金額會因公司正式公布配息、除息與否而變動。"
-    "「今年已除息」為今年實際已配發金額；尚未除息或公司調整配息政策時，全年實際金額可能與估算不同。"
-)
 
 
 class Holding(BaseModel):
@@ -89,6 +85,6 @@ def estimate(req: EstimateRequest, conn=Depends(get_db)):
         for h in req.holdings
     ]
     result = estimate_portfolio(holdings, stock_data)
-    result["disclaimer"] = _DISCLAIMER
+    result["disclaimer"] = DISCLAIMER
     result["currency"] = "TWD"
     return result

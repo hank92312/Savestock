@@ -39,3 +39,9 @@ logs/
 
 # Local tools (binaries)
 tools/
+
+# Local Netlify folder
+.netlify
+
+# Django (報表服務)
+web_django/staticfiles/

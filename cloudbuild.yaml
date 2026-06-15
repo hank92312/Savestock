@@ -1,0 +1,14 @@
+# Django 報表服務的 Cloud Build 設定（build context = repo root，
+# 才能同時納入 web_django/ 與共用的 backend/core/）。
+# 用法：gcloud builds submit --config cloudbuild.yaml .
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -t
+      - asia-east1-docker.pkg.dev/savestock-app/savestock-repo/savestock-report:latest
+      - -f
+      - web_django/Dockerfile
+      - .
+images:
+  - asia-east1-docker.pkg.dev/savestock-app/savestock-repo/savestock-report:latest

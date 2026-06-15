@@ -1,0 +1,9 @@
+# Cloud Build 上傳時排除（用於 root-context 的 Django 報表服務建置）。
+.git/
+.venv/
+frontend/
+web_django/staticfiles/
+**/__pycache__/
+*.db
+.pytest_cache/
+backend/tests/
