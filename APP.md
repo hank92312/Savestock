@@ -1,6 +1,6 @@
 # 專案架構文件：Savestock（長線存股防護系統）
 
-> 最後更新：2026-06-15（個人年度股利試算 Phase 1 上線：共用計算模組 + 試算分頁）
+> 最後更新：2026-06-15（個人年度股利試算 Phase 1+2 上線：試算分頁 + Django 報表服務/Admin）
 > 本文件為專案的單一入口參考：看完即可掌握整體內容與架構。
 > 細部待辦與部署決策見 [TODONEXT.md](TODONEXT.md)。
 > 雲端部署現況見 [第 7 節](#7-雲端部署現況gcp)。
@@ -25,7 +25,8 @@
 | 後端 | **Python FastAPI** | RESTful API，供 Flutter 呼叫 |
 | ETL | **Python（yfinance + SQLAlchemy）** | 抓盤後資料、算股利/殖利率/警示、寫入 DB |
 | 資料庫 | **SQLite**（本機開發）／**Neon PostgreSQL**（生產：免費方案） | 透過 SQLAlchemy `DATABASE_URL` 切換；生產 schema 見 `database/init_postgres.sql` |
-| 雲端 | **GCP Cloud Run + Neon PostgreSQL** | FastAPI 容器化部署，見第 7 節 |
+| 雲端 | **GCP Cloud Run + Neon PostgreSQL** | FastAPI（`savestock-api`）＋ Django 報表服務（`savestock-report`）容器化部署，見第 7 節 |
+| 網頁報表 | **Django** | 伺服器渲染可分享/可列印年度股利報表 + Django Admin；計算 import 共用 `core` |
 | 本地儲存 | shared_preferences | 用戶 UUID、教學導覽看過旗標 |
 
 ### 資料流
@@ -175,9 +176,9 @@ Yahoo 財經 ──(yfinance)──> ETL 批次運算 ──> savestock.db
   * 股票卡片加「截至 MM/DD」資料日期標籤。
   * `pool_pre_ping` 修復 Neon 閒置連線 SSL 斷線錯誤。
 * **個人年度股利試算 Phase 1**（2026-06-15）：`core/dividend_calc.py` 共用計算模組（+7 單元測試）、`POST /portfolio/estimate`、Flutter「股利試算」分頁（持股存裝置端、自動回填、估算提示窗）。已部署上線。
+* **個人年度股利試算 Phase 2**（2026-06-15）：`web_django/` Django 報表服務上線——伺服器渲染可分享/可列印報表（`/report?d=base64持股`，計算 import 共用 `core`、ORM 讀 Neon）、Django Admin 唯讀檢視 Stock_Master；Flutter 試算結果加「產生可分享網頁報表」按鈕。已部署（Cloud Run `savestock-report`）。
 
 ### ⏳ 待辦
-* **個人年度股利試算 Phase 2**：Django 報表頁（可分享/可列印）+ Django Admin 管理股利資料（另開 Cloud Run 服務，`min-instances=0`）。
 * **個人年度股利試算 Phase 3**：接 MOPS 公開資訊觀測站，補「已公告未除息」配息，提升「今年已公布」準確度。
 * 通知系統接線（`User_Preferences` 已備欄位）。
 
@@ -192,13 +193,16 @@ Yahoo 財經 ──(yfinance)──> ETL 批次運算 ──> savestock.db
 | 資源 | 服務 | 識別 / 設定 |
 | --- | --- | --- |
 | 後端 API | **Cloud Run** | 服務名 `savestock-api`；512Mi；**min=1** / max=2 instances（防冷啟動）；允許未驗證存取 |
+| 報表服務 | **Cloud Run** | 服務名 `savestock-report`（Django）；**min=0**（次要工具，省成本）；允許未驗證存取 |
 | 資料庫 | **Neon PostgreSQL（免費方案）** | `ep-floral-credit-aojbdxlt.c-2.ap-southeast-1.aws.neon.tech`；0.5GB；AWS Singapore（Cloud SQL 已於 2026-06-11 刪除） |
-| 容器倉庫 | **Artifact Registry** | `savestock-repo`（Docker 格式） |
-| 容器建置 | **Cloud Build** | 遠端建置（本機未裝 Docker）；image tag `savestock-api:latest` |
+| 容器倉庫 | **Artifact Registry** | `savestock-repo`（Docker 格式）；images：`savestock-api`、`savestock-report` |
+| 容器建置 | **Cloud Build** | 遠端建置（本機未裝 Docker）；Django 用 `cloudbuild.yaml`（root context 納入 `backend/core`） |
 
 * **正式 API 網址**：`https://savestock-api-62102931839.asia-east1.run.app`
+* **報表服務網址**：`https://savestock-report-62102931839.asia-east1.run.app`（`/report?d=...` 報表、`/admin` 管理）
 * **前端網址**：`https://savestock.netlify.app`（Flutter Web，Netlify 靜態托管）
-* **DB 連線**：Cloud Run 透過標準 TCP + SSL 連 Neon，`DATABASE_URL` 由 **GCP Secret Manager**（`savestock-db-url` version 4）注入（`--set-secrets`），不寫入環境變數明文。
+* **DB 連線**：Cloud Run 透過標準 TCP + SSL 連 Neon，`DATABASE_URL` 由 **GCP Secret Manager**（`savestock-db-url` version 4）注入（`--set-secrets`），不寫入環境變數明文。報表服務另注入 `django-secret-key` secret。
+* **Django Admin**：`savestock-report` 的 Django 自有表（auth/session/admin）以 Cloud Run Job 跑 `migrate` 建於 Neon（附加、不影響既有表）；superuser 帳號 `admin`（密碼不入庫，見私訊／自行重設）。報表本身唯讀，不需 migrate。
 * **容器化檔案**：`backend/Dockerfile`（python:3.11-slim + libpq）、`backend/.dockerignore`。
 * **健康檢查**：`/health` 已驗證回 `{"status":"healthy"}`；`/stocks` 已驗證回 200（空陣列，待資料填充）。
 
