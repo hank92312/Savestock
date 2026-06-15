@@ -53,6 +53,10 @@ class SearchCandidate {
 class ApiService {
   static const String _base = 'https://savestock-api-62102931839.asia-east1.run.app';
 
+  /// Django 報表服務（網頁可分享/可列印年度股利報表）
+  static const String reportBase =
+      'https://savestock-report-62102931839.asia-east1.run.app';
+
   static Future<List<Stock>> fetchDefaultStocks() async {
     final res = await http.get(Uri.parse('$_base/stocks/'));
     if (res.statusCode != 200) throw Exception('載入失敗 (${res.statusCode})');

@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../models/portfolio.dart';
 import '../services/api_service.dart';
 import '../services/portfolio_service.dart';
@@ -96,6 +98,21 @@ class _DividendCalcScreenState extends State<DividendCalcScreen> {
       setState(() => _calculating = false);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('估算失敗，請稍後再試（部分股票首次查詢較慢）')),
+      );
+    }
+  }
+
+  /// 開啟 Django 網頁報表（持股編碼於網址，可分享/可列印）
+  Future<void> _openWebReport() async {
+    final json = jsonEncode(_holdings
+        .map((h) => {'s': h.stockId, 'q': h.quantity, 'b': h.basis})
+        .toList());
+    final d = base64Url.encode(utf8.encode(json)).replaceAll('=', '');
+    final uri = Uri.parse('${ApiService.reportBase}/report?d=$d');
+    final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!ok && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('無法開啟報表頁')),
       );
     }
   }
@@ -243,6 +260,20 @@ class _DividendCalcScreenState extends State<DividendCalcScreen> {
       children: [
         if (_result != null) ...[
           _ResultSummary(result: _result!),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _openWebReport,
+              icon: const Icon(Icons.description_outlined, size: 20),
+              label: const Text('產生可分享網頁報表'),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+          ),
           const SizedBox(height: 20),
         ],
         Row(
