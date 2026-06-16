@@ -118,7 +118,6 @@ python -m pytest backend/tests/ -q
 
 - **[PORTFOLIO.md](PORTFOLIO.md)** — 完整作品集說明書（技術選型理由、架構決策、解決的問題）
 - **[APP.md](APP.md)** — 詳細架構與 API 文件
-- **[HANDOVER.md](HANDOVER.md)** — 開發交接報告
 
 ---
 

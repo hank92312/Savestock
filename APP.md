@@ -2,7 +2,6 @@
 
 > 最後更新：2026-06-15（Phase 4：分享功能 + 試算圖片下載上線；CORS 開放 localhost 供本地開發）
 > 本文件為專案的單一入口參考：看完即可掌握整體內容與架構。
-> 細部待辦與部署決策見 [TODONEXT.md](TODONEXT.md)。
 > 雲端部署現況見 [第 7 節](#7-雲端部署現況gcp)。
 
 ---
@@ -205,7 +204,7 @@ Yahoo 財經 ──(yfinance)──> ETL 批次運算 ──> savestock.db
 | --- | --- | --- |
 | 後端 API | **Cloud Run** | 服務名 `savestock-api`；512Mi；**min=1** / max=2 instances（防冷啟動）；允許未驗證存取 |
 | 報表服務 | **Cloud Run** | 服務名 `savestock-report`（Django）；**min=0**（次要工具，省成本）；允許未驗證存取 |
-| 資料庫 | **Neon PostgreSQL（免費方案）** | `ep-floral-credit-aojbdxlt.c-2.ap-southeast-1.aws.neon.tech`；0.5GB；AWS Singapore（Cloud SQL 已於 2026-06-11 刪除） |
+| 資料庫 | **Neon PostgreSQL（免費方案）** | 主機名見 Secret Manager（不公開）；0.5GB；AWS Singapore（Cloud SQL 已於 2026-06-11 刪除） |
 | 容器倉庫 | **Artifact Registry** | `savestock-repo`（Docker 格式）；images：`savestock-api`、`savestock-report` |
 | 容器建置 | **Cloud Build** | 遠端建置（本機未裝 Docker）；Django 用 `cloudbuild.yaml`（root context 納入 `backend/core`） |
 
@@ -288,11 +287,10 @@ Set-Location C:\Savestock\frontend; flutter run -d chrome --web-port 5000
 # 5. 打包 + 部署前端到 Netlify
 Set-Location C:\Savestock\frontend; flutter build web --release
 Set-Location C:\Savestock\frontend\build\web
-netlify deploy --prod --dir=. --site=ebec3bc6-8ea5-4131-98b0-e08c54aaaac8
+netlify deploy --prod --dir=. --site=<your-netlify-site-id>
 
 # 6. 部署後端到 Cloud Run（Google Cloud SDK Shell 執行）
-# gcloud builds submit "C:\Savestock\backend" --tag=asia-east1-docker.pkg.dev/savestock-app/savestock-repo/savestock-api:latest --project=savestock-app
-# （deploy 指令含密碼，見 TODONEXT.md 常用部署指令）
+# gcloud builds submit "C:\Savestock\backend" --tag=<region>-docker.pkg.dev/<gcp-project>/<repo>/savestock-api:latest --project=<gcp-project>
 
 # 7. 查 Cloud Run 錯誤 log
 # gcloud logging read "resource.type=cloud_run_revision AND resource.labels.service_name=savestock-api AND severity>=ERROR" --project=savestock-app --limit=20 --format="value(timestamp,textPayload)"

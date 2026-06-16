@@ -43,9 +43,11 @@ tools/
 # Local Netlify folder
 .netlify
 
-# 本地個人筆記（面試腳本等，不推 git）
+# 本地個人筆記（面試腳本、內部開發交接，不推 git）
 INTERVIEW_SCRIPT.md
 *.local.md
+TODONEXT.md
+HANDOVER.md
 
 # Django (報表服務)
 web_django/staticfiles/
