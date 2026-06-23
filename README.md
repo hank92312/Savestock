@@ -44,6 +44,33 @@ Savestock 用**多年平均股利**算真實殖利率、用**產業分級閾值 
 
 ---
 
+## 📱 畫面預覽
+
+<table>
+  <tr>
+    <td width="50%">
+      <img src="docs/screenshots/home.png" alt="預設清單" />
+      <p align="center"><sub><b>預設清單</b> — 依殖利率排序的 25 檔存股，支援產業篩選</sub></p>
+    </td>
+    <td width="50%">
+      <img src="docs/screenshots/detail.png" alt="個股詳情" />
+      <p align="center"><sub><b>個股詳情</b> — 近一年／2 年／5 年殖利率與收盤價走勢圖</sub></p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <img src="docs/screenshots/dividend-calc.png" alt="股利試算" />
+      <p align="center"><sub><b>股利試算</b> — 輸入持股估算今年可領股利</sub></p>
+    </td>
+    <td width="50%">
+      <img src="docs/screenshots/estimate-info.png" alt="估算透明度" />
+      <p align="center"><sub><b>估算透明度</b> — 區分「已公告」與歷史推估，並提示高權重個股</sub></p>
+    </td>
+  </tr>
+</table>
+
+---
+
 ## 🏗️ 技術架構
 
 ```mermaid
