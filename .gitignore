@@ -46,7 +46,9 @@ tools/
 # Local Netlify folder
 .netlify
 
-# 本地個人筆記（面試腳本、內部開發交接，不推 git）
+# 個人重要資訊與本地筆記（不推 git）
+蜜.txt
+
 INTERVIEW_SCRIPT.md
 *.local.md
 TODONEXT.md
