@@ -178,7 +178,7 @@ def refresh_watchlist(user_id: int, conn=Depends(get_db)):
 
     results = []
     errors = []
-    with ThreadPoolExecutor(max_workers=5) as ex:
+    with ThreadPoolExecutor(max_workers=10) as ex:
         futures = {ex.submit(_fetch_one, sid): sid for sid in stock_ids}
         for future in as_completed(futures):
             sid = futures[future]

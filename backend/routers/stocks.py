@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import text
-from database import get_db
+from database import get_db, engine
 from datetime import datetime, timedelta
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import re
 import yfinance as yf
 import requests as req_lib
@@ -227,14 +228,21 @@ def _dividend_1y(actions) -> float:
     total_series = _total_div_series(actions)
     if total_series is None:
         return 0.0
-    # 用 358 天（一年扣 ~7 天漂移緩衝）：台股除權息日每年常提前約 1 天，
-    # 若用滿 365 天，當 refresh 落在新除權息日當天，去年同期那筆會仍 <365 天
-    # 被一併計入，多算第 5 筆（如 2330 在 2026-06-11 算成 26.5，應為 22）。
-    one_year_ago = datetime.now() - timedelta(days=358)
+    # 主窗口 358 天：防止台積電季配股在邊界雙重計算
+    # （365 天時，若新除息日當天執行 refresh，去年同期那筆仍 <365 天而被多算）
+    now = datetime.now()
+    cutoff = now - timedelta(days=358)
     if actions.index.tzinfo:
-        one_year_ago = one_year_ago.replace(tzinfo=actions.index.tzinfo)
-    recent = total_series[total_series.index > one_year_ago]
-    return float(recent.sum())
+        cutoff = cutoff.replace(tzinfo=actions.index.tzinfo)
+    recent = total_series[total_series.index > cutoff]
+    if float(recent.sum()) > 0:
+        return float(recent.sum())
+    # Fallback 400 天：年配股且除息日恰好落在 359–400 天前（如 2347/9917）
+    # 季配股雙重計算風險需 >455 天（365+90）才可能觸發，400 天仍安全。
+    fallback_cutoff = now - timedelta(days=400)
+    if actions.index.tzinfo:
+        fallback_cutoff = fallback_cutoff.replace(tzinfo=actions.index.tzinfo)
+    return float(total_series[total_series.index > fallback_cutoff].sum())
 
 
 def _upsert_dividends(sid: str, actions, conn) -> None:
@@ -262,6 +270,12 @@ def _upsert_dividends(sid: str, actions, conn) -> None:
 
 def _fetch_and_upsert(sid: str, conn) -> dict | None:
     """從 yfinance 抓取最新資料並寫入 DB，回傳股票 dict 或 None（查無此股）。"""
+    # 先查 DB，已知股票可跳過 ticker.info（最慢的 yfinance 呼叫）
+    existing = conn.execute(
+        text("SELECT Name, Sector, Default_Drop_Threshold, Listing_Months FROM Stock_Master WHERE Stock_ID = :sid"),
+        {"sid": sid},
+    ).fetchone()
+
     ticker = yf.Ticker(sid)
     hist = ticker.history(period="1y")
     # yfinance 可能回傳當日尚未收盤的不完整列（Close/Volume 為 NaN），須剔除
@@ -269,28 +283,23 @@ def _fetch_and_upsert(sid: str, conn) -> dict | None:
     if hist.empty:
         return None
 
-    info = ticker.info
-    en_name = info.get("shortName") or info.get("longName") or sid
+    code_only = sid.replace(".TWO", "").replace(".TW", "")
+    if existing and _has_chinese(existing.name) and existing.listing_months is not None:
+        # 已有中文名與上市月數 → 跳過 ticker.info
+        name = existing.name
+        listing_months = existing.listing_months
+    else:
+        info = ticker.info
+        en_name = info.get("shortName") or info.get("longName") or sid
+        listing_months = _listing_months(info)
+        if existing:
+            name = existing.name if _has_chinese(existing.name) else (_resolve_chinese_name(code_only) or existing.name)
+        else:
+            name = _resolve_chinese_name(code_only) or en_name
 
-    # 讀取已存在資料（保留原有中文名稱、sector 與產業跌幅閾值）
-    existing = conn.execute(
-        text("SELECT Name, Sector, Default_Drop_Threshold FROM Stock_Master WHERE Stock_ID = :sid"),
-        {"sid": sid},
-    ).fetchone()
     sector = existing.sector if existing else "Unknown"
 
-    code_only = sid.replace(".TWO", "").replace(".TW", "")
-    if existing:
-        name = existing.name
-        # 既有名稱若非中文（早期抓取退回了英文名），嘗試升級為正確中文名
-        if not _has_chinese(name):
-            name = _resolve_chinese_name(code_only) or name
-    else:
-        # 新股票：優先取 TWSE 中文名，皆失敗才用 yfinance 英文名
-        name = _resolve_chinese_name(code_only) or en_name
-
     # 計算平均股利（上市不滿2年改用上市迄今年化）+ 近一年股利 + 近5年年均
-    listing_months = _listing_months(info)
     actions = ticker.actions
     avg_div = _avg_dividend(actions, listing_months)
     avg_div_5y = _avg_dividend_5y(actions, listing_months)
@@ -400,14 +409,22 @@ def refresh_default_stocks(conn=Depends(get_db)):
     rows = conn.execute(
         text("SELECT Stock_ID FROM Stock_Master WHERE Is_Default = TRUE")
     ).fetchall()
+    stock_ids = [r.stock_id for r in rows]
+
+    def _fetch_one(sid):
+        with engine.begin() as c:
+            return _fetch_and_upsert(sid, c)
+
     results = []
-    for r in rows:
-        try:
-            data = _fetch_and_upsert(r.stock_id, conn)
-            if data:
-                results.append(data)
-        except Exception:
-            pass  # 單檔失敗不影響其餘
+    with ThreadPoolExecutor(max_workers=10) as ex:
+        futures = {ex.submit(_fetch_one, sid): sid for sid in stock_ids}
+        for future in as_completed(futures):
+            try:
+                data = future.result()
+                if data:
+                    results.append(data)
+            except Exception:
+                pass  # 單檔失敗不影響其餘
     results.sort(key=lambda d: d.get("yield_1y") or -1, reverse=True)
     return results
 
