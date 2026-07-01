@@ -1,12 +1,12 @@
 # Savestock — 長線存股防護系統
 
 > **個人全端專案 ‧ 作品集說明書**
-> 一套協助存股族避開「高殖利率陷阱」的台股追蹤與股利試算系統。
+> 一套協助存股族避開「高殖利率陷阱」的台股追蹤與股利試算系統，並延伸至 ETF 成分股追蹤與 AI 選股分析。
 > 從資料爬取、後端 API、跨平台前端到雲端部署，皆由本人獨立設計與實作。
 
 🔗 **線上 Demo**：https://savestock.netlify.app
 📦 **原始碼**：https://github.com/hank92312/Savestock
-🗓️ **開發期間**：2026-04 ~ 2026-06（約 1.5 個月，88+ commits）
+🗓️ **開發期間**：2026-04 ~ 2026-07（約 3 個月，99+ commits）
 
 ---
 
@@ -55,6 +55,7 @@ graph TD
         API[FastAPI<br/>savestock-api<br/>Cloud Run min=1]
         DJ[Django 報表<br/>savestock-report<br/>Cloud Run min=0]
         SCH[Cloud Scheduler<br/>週一~五 15:00]
+        SCH2[Cloud Scheduler<br/>週一~五 15:30]
         SEC[Secret Manager]
         AR[Artifact Registry<br/>Docker Images]
     end
@@ -68,11 +69,14 @@ graph TD
     B --> F
     F -->|REST / JSON| API
     F -->|分享報表 URL| DJ
+    F -->|ETF 追蹤模組切換| DJ
     API --> DB
     DJ --> DB
     API -.即時補抓.-> YF
     API -.已公告配息.-> TWSE
+    DJ -.成分股/跨境收盤價.-> YF
     SCH -->|POST /stocks/refresh| API
+    SCH2 -->|POST /etf/refresh| API
     API --> YF
     SEC -.注入連線字串.-> API
     SEC -.注入 SECRET_KEY.-> DJ
@@ -101,7 +105,7 @@ Yahoo 財經 ──(yfinance)──► ETL 批次運算 ──► PostgreSQL
 - **由 Cloud Scheduler 每週一至五 15:00（台股收盤後）自動觸發**，無人值守更新。
 
 ### 4.2 後端 API（`backend/`，FastAPI）
-- 12 支 REST 端點：預設清單、模糊搜尋、個股查詢、歷史價格/股利、自選股 CRUD、投資組合試算。
+- 13 支 REST 端點：預設清單、模糊搜尋、個股查詢、歷史價格/股利、自選股 CRUD、投資組合試算、ETF 刷新。
 - **連線池調校**：`pool_pre_ping=True, pool_recycle=300` 解決 Neon 閒置斷線問題。
 - **並行抓取**：自選股刷新用 `ThreadPoolExecutor`（max 5 threads），10 檔從 ~250 秒降至 ~50 秒，修掉 504 timeout。
 
@@ -120,6 +124,20 @@ Yahoo 財經 ──(yfinance)──► ETL 批次運算 ──► PostgreSQL
 - 7 大畫面：預設清單、我的股票、搜尋、個股詳情、年度股利試算、教學導覽。
 - **效能**：「我的股票」開啟讀 DB 快取（<1 秒），按 🔄 才即時爬 yfinance。
 - **分享功能**：試算結果可一鍵分享至 LINE/Facebook、複製連結、或截圖成 PNG（`RepaintBoundary.toImage`）下載分享至社群。
+- **模組切換列**：頂部/底部一致的「存股追蹤 ↔ ETF 追蹤」切換元件，跨兩個獨立部署服務（Flutter App ↔ Django 報表）無縫導覽。
+
+### 4.6 ETF 追蹤與進階分析模組（`backend/core/etf_analytics.py`、`etl/`、`web_django/`）— 延伸模組
+> 在既有 FastAPI/PostgreSQL/Django 架構上疊加，追蹤 16 檔科技/AI 主題 ETF，不影響原有股利試算功能。
+
+- **抓取層**：每日 ETL 抓 16 檔 ETF 的 Top 10 成分股權重與跨境（美股/韓股）收盤價；成分股資料採「快照表 + 歷史表」雙軌設計——快照供列表/分析查詢快，歷史表逐日 append 供權重趨勢折線圖。
+- **分析層（框架無關純函式，FastAPI/Django 共用）**：
+  1. **機構共識股**：找多檔 ETF 共同持有的個股，依持有檔數與總權重排序。
+  2. **隱藏強勢股**：`Hidden Score = 持有ETF數 × (1 / 平均權重)`，挖掘「廣泛佈局但單一權重不顯眼」的潛力股。
+  3. **權重熱力圖**：ETF × 個股交叉權重矩陣視覺化。
+  4. **AI 三因子選股**：綜合共識度、隱藏強度、近 3 月動能，加權輸出 Top 20 推薦。
+  - 附 9 個 pytest 單元測試。
+- **呈現層**：Django 伺服器渲染 Dashboard、成分股詳情、進階分析頁；支援使用者自行新增/刪除自訂 ETF 加入追蹤。
+- **設計取捨**：新增自訂 ETF 時不同步抓收盤價（跨境股會拖慢操作），改由下次每日 ETL 統一補齊——與「即時 vs 批次」的一貫原則一致。
 
 ---
 
@@ -134,13 +152,15 @@ Yahoo 財經 ──(yfinance)──► ETL 批次運算 ──► PostgreSQL
 | **Neon 免費方案閒置斷線** | SQLAlchemy 連線池 `pre_ping` + `recycle` | 消除 `SSL connection closed` 錯誤 |
 | **Flutter Web 開新分頁失效** | `url_launcher` 在新版 web 套件靜默失敗，改用 `package:web` 直接 `window.open` | 分享/報表按鈕恢復正常 |
 | **雲端成本** | Cloud SQL → Neon 免費方案；報表服務 `min=0` 冷啟動省錢；前端先本地驗收再部署省 Netlify credits | DB 月費歸零 |
+| **股利邊界誤判**（近一年股利顯示 0） | 除息日恰落在滾動窗口邊界外 1~2 天的個股（如聯強、中保科）被誤判無股利；加 400 天 fallback 視窗，季配股邊界仍安全 | 修正後殖利率正確顯示，不再是 `--` |
+| **新模組上線後 API 500 錯誤** | ETF 模組需 import 共用的 `etl/` 目錄，但原 Docker build context 僅含 `backend/`；改以 repo root 為 context，兩個服務對齊同一種建置模式 | 從發現 log 中的 `ModuleNotFoundError` 到定位、修正、重新部署驗證，全程可追溯 |
 
 ---
 
 ## 6. 雲端部署與 DevOps
 
 - **容器化**：FastAPI 與 Django 各自 `Dockerfile`，透過 **Cloud Build 遠端建置**（本機無需安裝 Docker），推送至 **Artifact Registry**。
-- **Django 特殊建置**：build context 設為 repo root（`cloudbuild.yaml`），讓報表服務能納入共用的 `backend/core/`。
+- **統一建置模式**：兩服務皆以 **repo root 為 build context**（`cloudbuild-api.yaml` / `cloudbuild.yaml`），讓 API 與報表服務都能納入共用的 `backend/core/` 與 `etl/`——新增 ETF 模組時因原本 API 只以 `backend/` 為 context 而漏了 `etl/`，發現後對齊為同一種模式。
 - **Serverless 運算**：兩服務皆跑在 **Cloud Run**——API `min=1` 防冷啟動、報表 `min=0` 省成本，依流量自動擴縮。
 - **機密管理**：`DATABASE_URL`、`SECRET_KEY` 經 **Secret Manager** 注入，不寫進映像或環境變數明文。
 - **資料庫 migration**：Django 自有表（auth/admin）以 Cloud Run **Job** 跑 `migrate`，附加於 Neon 而不影響既有 ETL 表。
@@ -165,6 +185,7 @@ Secret Manager ─────┘（執行期注入機密）
 3. **解決真實的領域問題**：股利口徑（現金＋配股面額還原）、季配股估算失真、官方已公告 vs 歷史估算——這些是金融資料的真實坑，不是 CRUD 練習。
 4. **重視成本意識**：主動把 DB 月費降到零、用冷啟動策略與部署節流控管雲端開銷。
 5. **測試與文件**：核心計算附單元測試（驗證「為何重要」而非僅「做了什麼」）；維護 `APP.md` 架構文件與交接報告。
+6. **可擴充的模組化設計**：後來新增的 ETF 追蹤模組直接沿用既有的共用計算層模式（`backend/core/`）、並行抓取慣例、伺服器渲染架構，證明前期的架構決策經得起功能擴充的考驗，而非重寫。
 
 ---
 
@@ -172,6 +193,7 @@ Secret Manager ─────┘（執行期注入機密）
 
 - **上櫃（.TWO）年配股**：證交所 `t187ap45_L` 僅含上市，上櫃暫走估算。
 - **資料來源合規**：yfinance 爬 Yahoo 為非官方途徑，正式商用前須評估合法資料源。
+- **ETF 跨境資料完整度**：極少數美股/韓股成分股偶爾抓價失敗（單日約 1~2 檔／83 檔），採逐檔獨立 commit 設計，下次排程自動補齊，不影響其餘資料正確性。
 - **帳號系統**：目前為訪客 UUID（綁裝置），未來規劃 OAuth 登入與雲端同步。
 - **通知系統**：`User_Preferences` 已備欄位，待接 FCM 推播 / Email。
 
@@ -188,16 +210,17 @@ Savestock/
 │       ├── models/    # 資料模型
 │       └── widgets/   # 共用元件
 ├── backend/           # FastAPI 後端
-│   ├── core/          # ★ 框架無關共用計算層（FastAPI/Django 共用）
-│   ├── routers/       # API 路由
+│   ├── core/          # ★ 框架無關共用計算層（股利計算 + ETF 分析，FastAPI/Django 共用）
+│   ├── routers/       # API 路由（含 etf.py）
 │   ├── tests/         # pytest 單元測試
 │   └── Dockerfile
-├── web_django/        # Django 報表服務 + Admin
+├── web_django/        # Django 報表服務 + ETF Dashboard/分析頁 + Admin
 │   ├── report/        # 報表 app（views/models/templates）
 │   └── Dockerfile
-├── etl/               # 盤後資料管線
+├── etl/               # 盤後資料管線（股價、股利、ETF 成分股/跨境收盤價）
 ├── database/          # SQLite / PostgreSQL schema
-└── cloudbuild.yaml    # Django 容器建置設定
+├── cloudbuild.yaml       # Django 容器建置設定（repo root context）
+└── cloudbuild-api.yaml   # FastAPI 容器建置設定（repo root context，納入 etl/）
 ```
 
 ---

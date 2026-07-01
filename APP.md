@@ -1,8 +1,9 @@
 # 專案架構文件：Savestock（長線存股防護系統）
 
-> 最後更新：2026-06-15（Phase 4：分享功能 + 試算圖片下載上線；CORS 開放 localhost 供本地開發）
+> 最後更新：2026-07-01（Phase 5：ETF 成分股追蹤與進階分析模組上線）
 > 本文件為專案的單一入口參考：看完即可掌握整體內容與架構。
 > 雲端部署現況見 [第 7 節](#7-雲端部署現況gcp)。
+> ETF 模組完整規格見 [`etf_tracker.md`](etf_tracker.md)。
 
 ---
 
@@ -13,6 +14,7 @@
 * **目標受眾**：存股族、價值投資者、理財新手。
 * **核心理念**：用「平均股息」計算真實殖利率，並以「絕對數值 + 產業分級」觸發暴跌／爆量警示，協助使用者避開**高殖利率陷阱**。
 * **發佈方向（已定）**：**Web 優先**上線；帳號採**訪客 UUID**；含 **App 內教學導覽**。
+* **延伸模組**：ETF 成分股追蹤與進階分析（16 檔科技/AI 主題 ETF + 使用者自訂 ETF），見 [3.5 節](#35-etf-追蹤模組backend-etl-web_django)。
 
 ---
 
@@ -25,8 +27,8 @@
 | ETL | **Python（yfinance + SQLAlchemy）** | 抓盤後資料、算股利/殖利率/警示、寫入 DB |
 | 資料庫 | **SQLite**（本機開發）／**Neon PostgreSQL**（生產：免費方案） | 透過 SQLAlchemy `DATABASE_URL` 切換；生產 schema 見 `database/init_postgres.sql` |
 | 雲端 | **GCP Cloud Run + Neon PostgreSQL** | FastAPI（`savestock-api`）＋ Django 報表服務（`savestock-report`）容器化部署，見第 7 節 |
-| 網頁報表 | **Django** | 伺服器渲染可分享/可列印年度股利報表 + Django Admin；計算 import 共用 `core` |
-| 本地儲存 | shared_preferences | 用戶 UUID、教學導覽看過旗標 |
+| 網頁報表 | **Django** | 伺服器渲染可分享/可列印年度股利報表 + **ETF Dashboard/成分股/進階分析頁** + Django Admin；計算 import 共用 `core` |
+| 本地儲存 | shared_preferences | 用戶 UUID、教學導覽看過旗標、股利試算持股清單（裝置端，見 4 節） |
 
 ### 資料流
 ```
@@ -35,6 +37,12 @@ Yahoo 財經 ──(yfinance)──> ETL 批次運算 ──> savestock.db
                                           FastAPI 讀取/即時補抓
                                                   │
                                          Flutter App（呼叫 API 顯示）
+
+Yahoo 財經（含美股/韓股跨境）──(yfinance)──> etl/fetch_etf.py（每日 15:30）
+                                                  │
+                                    ETF_Holdings / ETF_Holding_History
+                                                  │
+                              Django ETF Dashboard / 成分股 / 進階分析頁（伺服器渲染）
 ```
 
 ---
@@ -49,8 +57,8 @@ Yahoo 財經 ──(yfinance)──> ETL 批次運算 ──> savestock.db
 
 ### 3.2 後端 API（`backend/`）
 * 入口 `main.py`（CORS `allow_origins=["https://savestock.netlify.app"]` + `allow_origin_regex=r"http://localhost(:\d+)?"` 供本地 `flutter run -d chrome` 開發）、`database.py`（`engine` + `get_db()`，以 `engine.begin()` 自動 commit/rollback；`.strip()` 防 Secret Manager 換行）。
-* 路由：`routers/stocks.py`、`routers/users.py`、`routers/portfolio.py`。
-* **共用計算層 `core/`**：框架無關的 Python 模組——`dividend_calc.py`（股利估算口徑）、`twse_dividends.py`（證交所已公告配息），供 FastAPI 與 Django 報表共用，避免邏輯多份維護。附 `tests/`（pytest）。
+* 路由：`routers/stocks.py`、`routers/users.py`、`routers/portfolio.py`、`routers/etf.py`。
+* **共用計算層 `core/`**：框架無關的 Python 模組——`dividend_calc.py`（股利估算口徑）、`twse_dividends.py`（證交所已公告配息）、`etf_analytics.py`（ETF 四大分析，見 4 節），供 FastAPI 與 Django 報表共用，避免邏輯多份維護。附 `tests/`（pytest，含 `test_etf_analytics.py` 9 案例）。
 
 | Method | 路徑 | 說明 |
 | --- | --- | --- |
@@ -68,6 +76,7 @@ Yahoo 財經 ──(yfinance)──> ETL 批次運算 ──> savestock.db
 | DELETE | `/users/{uid}/watchlist/{sid}` | 移除自選 |
 | POST | `/users/{uid}/watchlist/refresh` | 即時刷新自選並回傳（依殖利率降序）；**並行抓取（max 5 threads）**，10 檔 ~50 秒 |
 | POST | `/portfolio/estimate` | 個人年度股利試算：傳入持股清單（`stock_id`/`quantity`/`basis`），回傳全年估算總額、各檔明細、今年已除息、影響較大個股；DB 缺漏股票並行補抓 |
+| POST | `/etf/refresh` | 重新抓取全部 ETF（16 檔固定 + 使用者自訂）成分股與跨境收盤價；供 Cloud Scheduler 每日 15:30 觸發，延遲 import `etl/fetch_etf.py` 避免拖慢 API 啟動 |
 
 * **搜尋快取**：來源 TWSE `STOCK_DAY_ALL`（含 ETF 如 0050），24h TTL；上櫃不在範圍。
 * **自選股共用補抓**：`_fetch_and_upsert()` 供 lookup 與 watchlist/refresh 共用（即時 yfinance 更新、補 1 年歷史、自選股以 3% 跌幅＋2.5× 量警示）。
@@ -84,8 +93,12 @@ Yahoo 財經 ──(yfinance)──> ETL 批次運算 ──> savestock.db
 | `Daily_Prices` | `Stock_ID`, `Date`, `Close_Price`, `Volume`, `Alert_Flag`, `Alert_Reason` |
 | `Dividends` | `Stock_ID`, `Ex_Date`, `Cash_Dividend`, `Stock_Dividend`（現金＋股票股利歷史，供股利折線圖；`_fetch_and_upsert` 寫入） |
 | `User_Preferences` | `Push_Enabled`, `Email_Enabled`（推播/郵件，尚未接線） |
+| `ETF_Master` | `ETF_ID`, `Name`, `Category`, `Is_Custom`, `Owner_User_ID`, `Last_Updated`（16 檔固定種子 + 使用者自訂） |
+| `ETF_Holdings` | `ETF_ID`, `Stock_ID`, `Stock_Name`, `Weight`, `Snapshot_Date`（當前快照，ETL 先刪後插） |
+| `ETF_Holding_History` | `ETF_ID`, `Stock_ID`, `Date`, `Weight`（每日 append，供近 10 天權重趨勢折線圖） |
 
 > 免費方案自選上限＝**10 檔**（已統一：schema 種子、後端無授權 fallback、前端文案皆為 10）。
+> ETF 新表定義於 `database/init_postgres.sql` / `init_sqlite.sql`；**非自動 migration**，正式 DB 需手動執行一次建表語句（`CREATE TABLE IF NOT EXISTS` + `ON CONFLICT DO NOTHING`，可重複執行）。
 
 ### 3.4 前端 Flutter（`frontend/lib/`）
 | 檔案 | 角色 |
@@ -103,7 +116,33 @@ Yahoo 財經 ──(yfinance)──> ETL 批次運算 ──> savestock.db
 | `widgets/stock_card.dart`, `widgets/sector_badge.dart` | 共用股票卡（現價下方顯示「截至 MM/DD」資料日期）、產業標籤 |
 | `services/api_service.dart`, `services/user_service.dart` | API 呼叫層、UUID 與 user_id 本地管理 |
 | `models/stock.dart`, `models/portfolio.dart` | `Stock`；`Holding` / `PortfolioItem` / `PortfolioEstimate`（試算模型） |
+| `widgets/module_switch_bar.dart` | 「存股追蹤 ↔ ETF 追蹤」模組切換列；ETF 端直接連到 Django `/etf`（不同服務，非 Flutter 內路由） |
 | `theme/app_theme.dart` | 全域樣式 |
+
+### 3.5 ETF 追蹤模組（`backend/`、`etl/`、`web_django/`）
+
+延伸模組，追蹤 16 檔科技/AI 主題 ETF 成分股，並提供 4 種進階分析。完整資料範疇與演算法規格見 [`etf_tracker.md`](etf_tracker.md)；此節僅記錄與既有架構的整合方式。
+
+* **ETL（`etl/fetch_etf.py`）**：
+  * 逐檔 ETF 用 `etl/etf_source.py`（yfinance 為主，留 cmoney/moneydj 備援插槽）抓成分股權重，`etl/name_resolver.py` 將台股成分股名稱轉中文（美股/韓股維持英文）。
+  * 寫入 `ETF_Holdings`（先刪後插＝當前快照）＋ append `ETF_Holding_History`（每日累積，供近 10 天權重趨勢）。
+  * 蒐集所有成分股跨 ETF 去重後，`ThreadPoolExecutor`（max 5，與 watchlist/refresh 同慣例）並行補抓約 4 個月收盤價；新成分股以 stub 列寫入 `Stock_Master`（`ON CONFLICT DO NOTHING`，不覆蓋既有預設股的股利資料）。
+  * 可獨立執行（`python etl/fetch_etf.py`）或由 `/etf/refresh` 觸發 `run()`。
+  * **注意**：`fetch_etf.py` 自建獨立 SQLAlchemy engine（非 `backend/database.py` 共用），未設 `pool_pre_ping`；目前運作正常，若日後遇到 Neon 閒置斷線可比照 `backend/database.py` 補上。
+* **後端 API（`backend/routers/etf.py`）**：單一端點 `POST /etf/refresh`，延遲 import `etl/fetch_etf.py`（`sys.path` 動態加入 `etl/` 目錄）避免其重依賴拖慢 API 啟動；無需驗證，供 Cloud Scheduler 內部呼叫。
+* **分析層（`backend/core/etf_analytics.py`）**：框架無關純函式，FastAPI／Django 共用：
+  1. **重疊共識股**：計算多檔 ETF 共同持有個股的 `etf_count`（持有檔數）、`total_weight`（權重加總）。
+  2. **隱藏強勢股**：`Hidden Score = etf_count × (1 / avg_weight)`，找「廣泛持有但單一權重不高」的潛力股。
+  3. **權重熱力圖**：ETF × 個股交叉權重矩陣。
+  4. **AI 三因子選股**：綜合 ETF 共識度、隱藏強度、近 3 月動能，加權輸出 Top 20。
+  * 附 `backend/tests/test_etf_analytics.py`（9 案例，pytest）。
+* **呈現層（`web_django/report/`）**：伺服器渲染，沿用既有設計 token：
+  * `GET /etf` Dashboard（分群卡片：Tech / AI 兩族群）。
+  * `GET /etf/<etf_id>` 成分股詳情（表格＋權重圓餅圖＋歷史權重折線圖）。
+  * `GET /etf/analytics` 進階分析頁（支援 `?etfs=` 手動選擇或預設全部）。
+  * `POST /etf/add`／`POST /etf/<etf_id>/delete`：使用者新增/刪除自訂 ETF（`Is_Custom=True`；預設 16 檔不可刪）。新增時**不**同步抓收盤價（太慢），改由下次每日 ETL 自動補上。
+  * `report/context_processors.py` 的 `nav_urls` 注入 `STOCK_APP_URL`（Flutter App 網址）供頂部模組切換列使用。
+* **部署整合**：`backend/Dockerfile` 與 `web_django/Dockerfile` 皆改以 **repo root 為 build context**，同時 `COPY` `backend/`（或 `web_django/`）與 `etl/`，讓兩個服務都能 import 同一份 ETF 抓取邏輯（見 [7.1 節](#71-已部署資源gcp-專案savestock-app區域asia-east1)）。
 
 ---
 
@@ -187,10 +226,25 @@ Yahoo 財經 ──(yfinance)──> ETL 批次運算 ──> savestock.db
   * **試算圖片**：`_ShareCard` widget（`375px` 固定寬，白底）以 `Positioned(left: -2000)` 渲染於 Stack off-screen，`RepaintBoundary.toImage(pixelRatio: 3.0)` 截圖後透過 `Blob` + anchor click 下載；內容包含 Savestock 標題、年份、總額漸層卡、各持股明細（名稱/代號/股數/股利/已公告或估算標籤）、網站 footer。
   * **CORS 開放 localhost**：`backend/main.py` 加 `allow_origin_regex=r"http://localhost(:\d+)?"`，`flutter run -d chrome` 本地開發不需修改 API URL。已部署（FastAPI revision 00023）。
   * **pubspec.yaml**：加 `web: ^1.1.0`（將已存在的 transitive dep 升為 direct dep）。
+* **股利計算修正與效能優化**（2026-06-23）：
+  * `_dividend_1y` 加 400 天 fallback：358 天主窗口無股利時延伸判斷，修正年配股除息日恰落在 359–400 天前的個股（如聯強 2347、中保科 9917）近一年股利誤判為 0。
+  * `/stocks/refresh` 改 `ThreadPoolExecutor` 並行（max 10）、已有中文名/上市月數的股票跳過 `ticker.info`，修復 25 檔串行抓取超過 Cloud Run 300s timeout 而 504 的問題。
+  * `database.py` SQLite 連線加 `timeout=30`，讓本地並行寫入排隊等待而非報 `database is locked`（生產 Postgres 不受影響）。
+* **ETF 追蹤與進階分析模組 Phase 1**（2026-07-01）：詳見 [3.5 節](#35-etf-追蹤模組backend-etl-web_django)。
+  * 資料層：`ETF_Master`／`ETF_Holdings`／`ETF_Holding_History` 三張新表（手動套用至 Neon，非自動 migration）。
+  * 抓取層：`etl/etf_source.py`、`etl/fetch_etf.py`、`etl/name_resolver.py`，16 檔 ETF × 10 檔成分股，含美股/韓股跨境收盤價。
+  * 分析層：`backend/core/etf_analytics.py` 四大模組 + 9 個 pytest。
+  * 呈現層：Django Dashboard／成分股詳情／進階分析頁，含使用者自訂 ETF 新增/刪除。
+  * API：`POST /etf/refresh` 供 Cloud Scheduler 觸發；新增排程 `savestock-etf-daily`（週一至五 15:30，晚於股價排程 30 分避開撞期）。
+  * **部署修正**：`backend/Dockerfile` 原以 `backend/` 為 build context，`COPY . .` 不含 `etl/`，上線後 `/etf/refresh` 會 `ModuleNotFoundError`；改為 repo root context（新增 `cloudbuild-api.yaml`），與 Django 的建置方式一致。
+  * Cloud Run `savestock-api` request timeout 由 300s 提高至 600s（`/etf/refresh` 抓 83 檔跨境成分股價偶爾超過 300s）。
+  * 已部署上線並驗證：16/16 ETF 成分股、82/83 成分股收盤價（剩餘 1 檔跨境股由排程自動補上，逐檔 commit 不會遺失進度）。
 
 ### ⏳ 待辦
 * 通知系統接線（`User_Preferences` 已備欄位）。
 * 已知限制：證交所 `t187ap45_L` 僅含上市（`.TW`）；上櫃（`.TWO`）年配股目前無已公告資料、走估算。
+* `backend/Dockerfile` 未設 `PYTHONUNBUFFERED=1`，長任務（如 `/etf/refresh`）的 print log 會整批緩衝輸出，即時進度不可見（不影響功能，只影響除錯時的可觀測性）。
+* `etl/fetch_etf.py` 自建獨立 DB engine，未設 `pool_pre_ping`（見 3.5 節）。
 
 ---
 
@@ -202,11 +256,12 @@ Yahoo 財經 ──(yfinance)──> ETL 批次運算 ──> savestock.db
 
 | 資源 | 服務 | 識別 / 設定 |
 | --- | --- | --- |
-| 後端 API | **Cloud Run** | 服務名 `savestock-api`；512Mi；**min=1** / max=2 instances（防冷啟動）；允許未驗證存取 |
+| 後端 API | **Cloud Run** | 服務名 `savestock-api`；512Mi；**min=1** / max=2 instances（防冷啟動）；request timeout **600s**（`/etf/refresh` 跨境抓價偶超 300s，2026-07-01 調高）；允許未驗證存取 |
 | 報表服務 | **Cloud Run** | 服務名 `savestock-report`（Django）；**min=0**（次要工具，省成本）；允許未驗證存取 |
 | 資料庫 | **Neon PostgreSQL（免費方案）** | 主機名見 Secret Manager（不公開）；0.5GB；AWS Singapore（Cloud SQL 已於 2026-06-11 刪除） |
 | 容器倉庫 | **Artifact Registry** | `savestock-repo`（Docker 格式）；images：`savestock-api`、`savestock-report` |
-| 容器建置 | **Cloud Build** | 遠端建置（本機未裝 Docker）；Django 用 `cloudbuild.yaml`（root context 納入 `backend/core`） |
+| 容器建置 | **Cloud Build** | 遠端建置（本機未裝 Docker）；`savestock-api` 用 `cloudbuild-api.yaml`、`savestock-report` 用 `cloudbuild.yaml`，**皆以 repo root 為 context**（納入共用的 `backend/core` 與 `etl/`） |
+| 排程 | **Cloud Scheduler** | `savestock-etl-daily`（週一至五 15:00，觸發 `/stocks/refresh`）；`savestock-etf-daily`（週一至五 15:30，觸發 `/etf/refresh`，attempt-deadline 900s） |
 
 * **正式 API 網址**：`https://savestock-api-62102931839.asia-east1.run.app`
 * **報表服務網址**：`https://savestock-report-62102931839.asia-east1.run.app`（`/report?d=...` 報表、`/admin` 管理）
@@ -234,6 +289,8 @@ Yahoo 財經 ──(yfinance)──> ETL 批次運算 ──> savestock.db
 | Flutter Web 部署 Netlify | ✅ `https://savestock.netlify.app` |
 | 手機端對端驗證 | ✅ 全功能通過 |
 | **ETL 自動排程（Cloud Scheduler）** | ✅ **已上線**（`savestock-etl-daily`，週一至五 15:00） |
+| **ETF 追蹤模組**（資料層/抓取層/分析層/呈現層） | ✅ **已上線**（2026-07-01，見 [3.5 節](#35-etf-追蹤模組backend-etl-web_django)） |
+| **ETF 每日排程（Cloud Scheduler）** | ✅ **已上線**（`savestock-etf-daily`，週一至五 15:30） |
 
 ### 7.4 成本提醒
 
@@ -264,6 +321,11 @@ Yahoo 財經 ──(yfinance)──> ETL 批次運算 ──> savestock.db
 | 殖利率降序排序（清單與自選一致） | refresh 端點亦於回傳前排序 |
 | 刪除用「常駐按鈕＋左滑」 | 左滑為觸控手勢，web 滑鼠難觸發 |
 | 自訂 ScrollBehavior 加 mouse | 讓 web/桌機滑鼠可拖曳捲動/下拉 |
+| 股利試算持股清單存裝置端（shared_preferences），非資料庫 | 一次性試算不需跨裝置同步，省 DB 寫入與容量；與需長期追蹤的「我的股票」（存 DB）明確分工，而非全面不用資料庫 |
+| ETF 成分股「先刪後插快照 + 每日 append 歷史」雙表設計 | `ETF_Holdings` 只留最新一份供列表/分析查詢快；`ETF_Holding_History` 累積供權重趨勢折線圖，兩者用途不同不合併 |
+| 新增自訂 ETF 時不同步抓收盤價 | 即時抓價會拖慢使用者操作（跨境股尤其慢），改由下次每日 ETL 統一補上 |
+| `backend/Dockerfile`／`web_django/Dockerfile` 改以 repo root 為 build context | ETF 端點需 import `etl/` 抓取邏輯；原本以各自子目錄為 context 會漏掉 `etl/`，上線後才發現 `ModuleNotFoundError` |
+| `savestock-api` request timeout 提高至 600s | `/etf/refresh` 屬排程觸發、非使用者互動端點，可接受較長回應時間，優先解決跨境抓價偶超時的問題，而非重構成非同步任務 |
 
 ---
 
@@ -279,6 +341,9 @@ Invoke-RestMethod http://localhost:8000/health
 # 3. 手動執行本機 ETL
 Set-Location C:\Savestock; .venv\Scripts\python.exe etl\fetch_data.py
 
+# 3b. 手動執行本機 ETF ETL
+Set-Location C:\Savestock; .venv\Scripts\python.exe etl\fetch_etf.py
+
 # 4. 啟動 Flutter 本機預覽
 Set-Location C:\Savestock\frontend; flutter run -d chrome --web-port 5000
 
@@ -286,11 +351,16 @@ Set-Location C:\Savestock\frontend; flutter run -d chrome --web-port 5000
 
 # 5. 打包 + 部署前端到 Netlify
 Set-Location C:\Savestock\frontend; flutter build web --release
-Set-Location C:\Savestock\frontend\build\web
-netlify deploy --prod --dir=. --site=<your-netlify-site-id>
+netlify deploy --prod --dir=build/web --site=<your-netlify-site-id>
 
-# 6. 部署後端到 Cloud Run（Google Cloud SDK Shell 執行）
-# gcloud builds submit "C:\Savestock\backend" --tag=<region>-docker.pkg.dev/<gcp-project>/<repo>/savestock-api:latest --project=<gcp-project>
+# 6. 部署後端 API 到 Cloud Run（repo root 為 build context，納入 etl/；Google Cloud SDK Shell 執行）
+Set-Location C:\Savestock
+gcloud builds submit --config cloudbuild-api.yaml .
+gcloud run deploy savestock-api --image=asia-east1-docker.pkg.dev/<gcp-project>/savestock-repo/savestock-api:latest --region=asia-east1 --allow-unauthenticated --update-secrets=DATABASE_URL=savestock-db-url:latest
+
+# 6b. 部署 Django 報表服務到 Cloud Run（同樣 repo root context）
+gcloud builds submit --config cloudbuild.yaml .
+gcloud run deploy savestock-report --image=asia-east1-docker.pkg.dev/<gcp-project>/savestock-repo/savestock-report:latest --region=asia-east1 --allow-unauthenticated --update-secrets=DATABASE_URL=savestock-db-url:latest
 
 # 7. 查 Cloud Run 錯誤 log
 # gcloud logging read "resource.type=cloud_run_revision AND resource.labels.service_name=savestock-api AND severity>=ERROR" --project=savestock-app --limit=20 --format="value(timestamp,textPayload)"
