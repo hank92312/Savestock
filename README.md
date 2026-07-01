@@ -1,7 +1,7 @@
 <h1 align="center">📈 Savestock — 長線存股防護系統</h1>
 
 <p align="center">
-  協助存股族避開「高殖利率陷阱」的台股追蹤與年度股利試算系統<br/>
+  協助存股族避開「高殖利率陷阱」的台股追蹤與年度股利試算系統，並延伸至 ETF 成分股追蹤與 AI 選股分析<br/>
   <em>個人全端專案 ‧ 從資料爬取、API、跨平台前端到雲端部署皆獨立完成</em>
 </p>
 
@@ -41,6 +41,8 @@ Savestock 用**多年平均股利**算真實殖利率、用**產業分級閾值 
 - 🧮 **年度股利試算** — 輸入持股估算今年可領股利，區分已公告 vs 估算
 - 🔗 **可分享報表** — 一鍵分享至 LINE/Facebook、複製連結、截圖成 PNG
 - 📈 **互動圖表** — 收盤價與股利歷史折線圖
+- 🧠 **ETF 成分股追蹤與進階分析（新）** — 16 檔科技/AI 主題 ETF，每日自動更新成分股與跨境收盤價；提供機構共識股、隱藏強勢股、權重熱力圖、三因子 AI 選股 4 種分析
+- ➕ **自訂 ETF** — 使用者可自行加入追蹤清單外的 ETF，隔日自動納入每日更新
 
 ---
 
@@ -77,12 +79,14 @@ Savestock 用**多年平均股利**算真實殖利率、用**產業分級閾值 
 graph TD
     B[瀏覽器 / 手機] --> F[Flutter Web @ Netlify]
     F -->|REST / JSON| API[FastAPI · Cloud Run]
-    F -->|分享報表 URL| DJ[Django 報表 · Cloud Run]
+    F -->|分享報表 URL / ETF 分析頁| DJ[Django 報表 · Cloud Run]
     API --> DB[(Neon PostgreSQL)]
     DJ --> DB
     API -.即時補抓.-> YF[Yahoo Finance]
     API -.已公告配息.-> TWSE[證交所 OpenAPI]
-    SCH[Cloud Scheduler<br/>週一~五 15:00] -->|觸發 ETL| API
+    DJ -.成分股/跨境收盤價.-> YF
+    SCH[Cloud Scheduler<br/>週一~五 15:00] -->|觸發股價 ETL| API
+    SCH2[Cloud Scheduler<br/>週一~五 15:30] -->|觸發 ETF ETL| API
     SEC[Secret Manager] -.注入機密.-> API
     SEC -.注入機密.-> DJ
 ```
@@ -103,7 +107,8 @@ graph TD
 
 ## 🔑 技術亮點
 
-- **共用計算層**：抽出框架無關的 `backend/core/` 純函式層，FastAPI 與 Django **共用同一份股利計算邏輯**，杜絕雙頭維護。
+- **共用計算層**：抽出框架無關的 `backend/core/` 純函式層，FastAPI 與 Django **共用同一份股利計算 / ETF 分析邏輯**，杜絕雙頭維護。
+- **ETF 四大分析模組**：`backend/core/etf_analytics.py` 純函式實作機構共識股、隱藏強勢股、權重熱力圖、三因子 AI 選股，附 9 個 pytest 驗證核心邏輯。
 - **效能調校**：DB 快取優先 + `ThreadPoolExecutor` 並行抓取，自選股刷新從 250 秒降至 ~50 秒。
 - **無狀態分享報表**：持股資料 base64 編碼進 URL（`/report?d=...`），分享不需資料庫寫入。
 - **成本意識**：Cloud SQL → Neon 免費方案（DB 月費歸零）、Cloud Run `min=0` 冷啟動省錢。
@@ -117,11 +122,13 @@ graph TD
 Savestock/
 ├── frontend/      # Flutter 跨平台前端（screens / services / models / widgets）
 ├── backend/       # FastAPI 後端
-│   └── core/      # ★ 框架無關共用計算層（FastAPI/Django 共用）
-├── web_django/    # Django 報表服務 + Admin
-├── etl/           # 盤後資料管線
+│   ├── core/      # ★ 框架無關共用計算層（股利計算 + ETF 分析，FastAPI/Django 共用）
+│   └── routers/   # stocks / users / portfolio / etf
+├── web_django/    # Django 報表服務 + ETF Dashboard/分析頁 + Admin
+├── etl/           # 盤後資料管線（股價、股利、ETF 成分股/跨境收盤價）
 ├── database/      # SQLite / PostgreSQL schema
-└── cloudbuild.yaml
+├── cloudbuild.yaml       # Django 報表服務建置設定
+└── cloudbuild-api.yaml   # FastAPI 後端建置設定（repo root context，納入 etl/）
 ```
 
 ---
@@ -145,6 +152,7 @@ python -m pytest backend/tests/ -q
 
 - **[PORTFOLIO.md](PORTFOLIO.md)** — 完整作品集說明書（技術選型理由、架構決策、解決的問題）
 - **[APP.md](APP.md)** — 詳細架構與 API 文件
+- **[etf_tracker.md](etf_tracker.md)** — ETF 追蹤模組規格書（資料範疇、四大分析演算法）
 
 ---
 
