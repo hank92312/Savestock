@@ -404,8 +404,30 @@ def get_default_stocks(conn=Depends(get_db)):
 
 
 @router.post("/refresh")
-def refresh_default_stocks(conn=Depends(get_db)):
-    """即時從 yfinance 更新所有預設股的最新價格/警示並回傳（依殖利率降序）。"""
+def refresh_default_stocks(force: bool = False, conn=Depends(get_db)):
+    """更新所有預設股的最新價格/警示並回傳（依殖利率降序）。
+
+    每日 15:00 已有 Cloud Scheduler 自動跑過 `/stocks/refresh`，若資料已是
+    近期（排程已更新），直接回傳 DB 快照（<1 秒），不重複打 yfinance；
+    只有資料過期（排程失敗/尚未執行）或 `force=true` 才即時抓取。
+    """
+    if not force:
+        # 沿用 /lookup 的「日期比較交給 SQL」慣例，避免 SQLite（存文字）
+        # 與 PostgreSQL（存 date）回傳型別不同，在 Python 端比較出錯。
+        cutoff = datetime.now().date() - timedelta(days=3)
+        any_stale = conn.execute(text("""
+            SELECT EXISTS (
+                SELECT 1 FROM Stock_Master sm
+                WHERE sm.Is_Default = TRUE
+                  AND (
+                      (SELECT MAX(Date) FROM Daily_Prices WHERE Stock_ID = sm.Stock_ID) IS NULL
+                      OR (SELECT MAX(Date) FROM Daily_Prices WHERE Stock_ID = sm.Stock_ID) < :cutoff
+                  )
+            )
+        """), {"cutoff": cutoff}).scalar()
+        if not any_stale:
+            return get_default_stocks(conn)
+
     rows = conn.execute(
         text("SELECT Stock_ID FROM Stock_Master WHERE Is_Default = TRUE")
     ).fetchall()
