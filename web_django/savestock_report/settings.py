@@ -17,7 +17,15 @@ _BACKEND_DIR = BASE_DIR.parent / "backend"
 if str(_BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(_BACKEND_DIR))
 
+# 讓 Django 能 import ETL 的 ETF 來源層與名稱解析（新增自訂 ETF 時共用同一份抓取邏輯）
+_ETL_DIR = BASE_DIR.parent / "etl"
+if str(_ETL_DIR) not in sys.path:
+    sys.path.insert(0, str(_ETL_DIR))
+
 SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "dev-insecure-key-change-in-prod")
+
+# 「存股追蹤」Flutter App 網址（頂部切換列用）；正式站預設 Netlify，本地開發可用環境變數覆蓋
+STOCK_APP_URL = os.environ.get("STOCK_APP_URL", "https://savestock.netlify.app")
 DEBUG = os.environ.get("DJANGO_DEBUG", "False").lower() == "true"
 ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "*").split(",")
 CSRF_TRUSTED_ORIGINS = [
@@ -58,6 +66,7 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
+                "report.context_processors.nav_urls",
             ],
         },
     },

@@ -1,0 +1,90 @@
+{% load humanize %}<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Savestock{% endblock %}</title>
+  <style>
+    /* Savestock 共用設計 token（與 Flutter app_theme.dart / report.html 一致）*/
+    :root {
+      --primary: #1A73E8;
+      --primary2: #4c8ef0;
+      --text: #1C1C1E;
+      --text2: #6C757D;
+      --surface: #F3F5F9;
+      --divider: #E9ECEF;
+      --red: #E53935;
+      --green: #2E7D32;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: var(--surface); color: var(--text);
+      font-family: -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif;
+      line-height: 1.5;
+    }
+    a { color: inherit; text-decoration: none; }
+    /* 頂部導覽：功能切換一目了然 */
+    .navbar {
+      background: #fff; border-bottom: 1px solid var(--divider);
+      box-shadow: 0 1px 6px rgba(32,44,68,.04);
+      position: sticky; top: 0; z-index: 20;
+    }
+    .navbar .inner {
+      max-width: 960px; margin: 0 auto; padding: 8px 16px;
+      display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px;
+    }
+    .brand { font-weight: 800; font-size: 17px; }
+    /* 模組切換分段控制：存股追蹤 ｜ ETF 追蹤 */
+    .seg { display: inline-flex; background: var(--surface); border-radius: 12px; padding: 3px; gap: 2px; }
+    .seg a {
+      font-size: 14px; font-weight: 700; color: var(--text2);
+      padding: 7px 16px; border-radius: 9px; white-space: nowrap;
+    }
+    .seg a:hover { color: var(--text); }
+    .seg a.active { background: #fff; color: var(--primary); box-shadow: 0 1px 4px rgba(32,44,68,.12); }
+    /* ETF 子選單 */
+    .subnav { display: inline-flex; gap: 4px; margin-left: auto; }
+    .nav-link {
+      color: var(--text2); font-size: 13.5px; font-weight: 600;
+      padding: 6px 11px; border-radius: 10px;
+    }
+    .nav-link:hover { background: var(--surface); color: var(--text); }
+    .nav-link.active { background: rgba(26,115,232,.12); color: var(--primary); }
+    .wrap { max-width: 960px; margin: 0 auto; padding: 22px 16px 60px; }
+    .card { background: #fff; border-radius: 16px; padding: 18px 20px; margin-bottom: 16px;
+            box-shadow: 0 4px 14px rgba(32,44,68,.08); }
+    .muted { color: var(--text2); font-size: 13px; }
+    .btn {
+      background: var(--primary); color: #fff; border: 0; border-radius: 10px;
+      padding: 8px 16px; font-size: 14px; cursor: pointer; display: inline-block;
+    }
+    .badge { display: inline-block; background: rgba(26,115,232,.12); color: var(--primary);
+             font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px; }
+    footer { text-align: center; color: var(--text2); font-size: 12px; margin-top: 28px; }
+    {% block extra_css %}{% endblock %}
+  </style>
+  {% block head_extra %}{% endblock %}
+</head>
+<body>
+  <div class="navbar">
+    <div class="inner">
+      <span class="brand">Savestock</span>
+      <!-- 模組切換：存股追蹤（Flutter App）｜ ETF 追蹤（本站）-->
+      <div class="seg">
+        <a href="{{ STOCK_APP_URL }}">存股追蹤</a>
+        <a href="{% url 'etf_dashboard' %}" class="active">ETF 追蹤</a>
+      </div>
+      <!-- ETF 模組內的子頁（股利報表屬存股追蹤功能，不在此列出）-->
+      <div class="subnav">
+        <a href="{% url 'etf_dashboard' %}" class="nav-link {% block nav_etf %}{% endblock %}">ETF 列表</a>
+        <a href="{% url 'etf_analytics' %}" class="nav-link {% block nav_analytics %}{% endblock %}">進階分析</a>
+      </div>
+    </div>
+  </div>
+  <div class="wrap">
+    {% block content %}{% endblock %}
+    <footer>本平台由 Savestock 產生，資料來源 Yahoo Finance，僅供參考，非投資建議。</footer>
+  </div>
+  {% block body_scripts %}{% endblock %}
+</body>
+</html>

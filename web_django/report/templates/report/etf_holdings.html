@@ -1,0 +1,126 @@
+{% extends "report/base.html" %}
+{% block title %}{% if not_found %}找不到 ETF{% else %}{{ etf.name }} 成分股{% endif %} | Savestock{% endblock %}
+{% block nav_etf %}active{% endblock %}
+
+{% block head_extra %}
+  {% if not not_found %}
+  <link rel="stylesheet" href="https://cdn.datatables.net/2.1.8/css/dataTables.dataTables.min.css">
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+  <script src="https://cdn.datatables.net/2.1.8/js/dataTables.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  {% endif %}
+{% endblock %}
+
+{% block extra_css %}
+    .page-h { margin: 2px 0 2px; font-size: 22px; }
+    .page-h .code { color: var(--primary); }
+    .back { font-size: 13px; font-weight: 600; color: var(--text2); }
+    .back::before { content: "← "; }
+    .charts { display: grid; gap: 16px; grid-template-columns: 1fr 1fr; }
+    @media (max-width: 720px) { .charts { grid-template-columns: 1fr; } }
+    .card h2 { font-size: 15px; margin: 0 0 12px; }
+    .chart-box { position: relative; height: 300px; }
+    table.dataTable { width: 100% !important; font-size: 13.5px; }
+    table.dataTable thead th { text-align: right; color: var(--text2); font-weight: 600; }
+    table.dataTable thead th:nth-child(-n+2) { text-align: left; }
+    table.dataTable td { text-align: right; }
+    table.dataTable td:nth-child(-n+2) { text-align: left; }
+    .code-cell { color: var(--text2); font-size: 12.5px; }
+    .w-cell { font-weight: 700; color: var(--primary); }
+    .updating { color: var(--red); font-size: 12.5px; }
+    .dataTables_wrapper .dataTables_filter input { border: 1px solid var(--divider); border-radius: 8px; padding: 4px 8px; }
+{% endblock %}
+
+{% block content %}
+  {% if not_found %}
+    <div class="card">
+      <h2>找不到這檔 ETF</h2>
+      <p class="muted">代號 {{ etf_id }} 不在追蹤清單中。<a href="{% url 'etf_dashboard' %}" style="color:var(--primary)">回 ETF 列表</a></p>
+    </div>
+  {% else %}
+    <a class="back" href="{% url 'etf_dashboard' %}">回 ETF 列表</a>
+    <h1 class="page-h"><span class="code">{{ etf.etf_id }}</span> {{ etf.name }}</h1>
+    <p class="muted">
+      成分股權重前 {{ rows|length }} 大
+      {% if snapshot_date %}・資料日期 {{ snapshot_date|date:"Y/m/d" }}{% endif %}
+    </p>
+
+    <div class="charts">
+      <div class="card">
+        <h2>成分股權重分佈</h2>
+        <div class="chart-box"><canvas id="pieChart"></canvas></div>
+      </div>
+      <div class="card">
+        <h2>{% if core_stock %}{{ core_stock.name }}（{{ core_stock.code }}）{% endif %}近 {{ trend_days }} 天權重趨勢</h2>
+        <div class="chart-box"><canvas id="trendChart"></canvas></div>
+        {% if trend_labels|length < 2 %}
+        <p class="muted" style="margin-top:8px">歷史權重每日累積中，滿數日後即可看見完整趨勢。</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>成分股明細</h2>
+      <table id="holdingsTable">
+        <thead>
+          <tr><th>股票代碼</th><th>股票名稱</th><th>權重 (%)</th><th>最新收盤價</th></tr>
+        </thead>
+        <tbody>
+          {% for r in rows %}
+          <tr>
+            <td class="code-cell">{{ r.code }}</td>
+            <td>{{ r.name }}</td>
+            <td class="w-cell">{{ r.weight }}</td>
+            <td>{% if r.close != None %}{{ r.close }}{% else %}<span class="updating">更新中</span>{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {{ pie_labels|json_script:"pie-labels" }}
+    {{ pie_data|json_script:"pie-data" }}
+    {{ trend_labels|json_script:"trend-labels" }}
+    {{ trend_data|json_script:"trend-data" }}
+  {% endif %}
+{% endblock %}
+
+{% block body_scripts %}
+  {% if not not_found %}
+  <script>
+    const PRIMARY = '#1A73E8';
+    const j = id => JSON.parse(document.getElementById(id).textContent);
+    // 圓餅圖配色：主色系漸層
+    const palette = ['#1A73E8','#4c8ef0','#7EB0F5','#2E7D32','#66BB6A','#F9A825',
+                     '#FB8C00','#E53935','#8E24AA','#00897B'];
+
+    new Chart(document.getElementById('pieChart'), {
+      type: 'doughnut',
+      data: { labels: j('pie-labels'),
+              datasets: [{ data: j('pie-data'), backgroundColor: palette, borderWidth: 1, borderColor: '#fff' }] },
+      options: { responsive: true, maintainAspectRatio: false,
+                 plugins: { legend: { position: 'right', labels: { boxWidth: 12, font: { size: 11 } } } } }
+    });
+
+    new Chart(document.getElementById('trendChart'), {
+      type: 'line',
+      data: { labels: j('trend-labels'),
+              datasets: [{ label: '權重 %', data: j('trend-data'),
+                           borderColor: PRIMARY, backgroundColor: 'rgba(26,115,232,.12)',
+                           fill: true, tension: .3, pointRadius: 3 }] },
+      options: { responsive: true, maintainAspectRatio: false,
+                 plugins: { legend: { display: false } },
+                 scales: { y: { title: { display: true, text: '權重 %' } } } }
+    });
+
+    new DataTable('#holdingsTable', {
+      pageLength: 10, lengthMenu: [10, 25, 50],
+      order: [[2, 'desc']],
+      language: {
+        search: '搜尋：', lengthMenu: '每頁 _MENU_ 筆', info: '第 _START_–_END_ 筆／共 _TOTAL_ 筆',
+        paginate: { previous: '上一頁', next: '下一頁' }, zeroRecords: '查無符合的成分股'
+      }
+    });
+  </script>
+  {% endif %}
+{% endblock %}

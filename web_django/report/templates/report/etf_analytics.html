@@ -1,0 +1,194 @@
+{% extends "report/base.html" %}
+{% block title %}ETF 進階分析 | Savestock{% endblock %}
+{% block nav_analytics %}active{% endblock %}
+
+{% block head_extra %}
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+{% endblock %}
+
+{% block extra_css %}
+    .page-h { margin: 4px 0 2px; font-size: 22px; }
+    .toc { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 4px; }
+    .toc a { font-size: 13px; font-weight: 700; color: var(--primary);
+             background: rgba(26,115,232,.10); padding: 6px 12px; border-radius: 20px; }
+    .card h2 { font-size: 16px; margin: 0 0 4px; }
+    .card .sub { color: var(--text2); font-size: 12.5px; margin: 0 0 12px; }
+    .chart-box { position: relative; height: 320px; margin-bottom: 6px; }
+    table.an { width: 100%; border-collapse: collapse; font-size: 13px; }
+    table.an th, table.an td { padding: 7px 8px; border-bottom: 1px solid var(--divider); text-align: right; }
+    table.an th:first-child, table.an td:first-child,
+    table.an th:nth-child(2), table.an td:nth-child(2) { text-align: left; }
+    table.an th { color: var(--text2); font-weight: 600; font-size: 12px; }
+    .rank { display: inline-block; min-width: 20px; height: 20px; line-height: 20px; text-align: center;
+            background: var(--primary); color: #fff; border-radius: 6px; font-size: 11px; font-weight: 700; }
+    .rank.dim { background: var(--text2); }
+    .code-cell { color: var(--text2); font-size: 12px; }
+    .pos { color: var(--green); } .neg { color: var(--red); }
+    .etf-tags { font-size: 11px; color: var(--text2); }
+    /* 選擇器 */
+    .selector { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 10px 0 12px; }
+    .selector label { font-size: 12.5px; display: inline-flex; align-items: center; gap: 4px; }
+    .actions { display: flex; gap: 8px; margin-top: 8px; }
+    .btn.ghost { background: #fff; color: var(--primary); border: 1px solid var(--primary); }
+    /* 熱力圖 */
+    .heat-wrap { overflow-x: auto; }
+    table.heat { border-collapse: collapse; font-size: 11.5px; }
+    table.heat th, table.heat td { border: 1px solid var(--divider); padding: 5px 7px; text-align: center; white-space: nowrap; }
+    table.heat th.rowh, table.heat td.rowh { text-align: left; position: sticky; left: 0; background: #fff; z-index: 1; }
+    table.heat th { color: var(--text2); font-weight: 600; }
+{% endblock %}
+
+{% block content %}
+  <h1 class="page-h">ETF 進階分析</h1>
+  <p class="muted">跨 ETF 挖掘機構共識股、隱藏強勢股、權重熱力圖與 AI 智慧選股。</p>
+
+  <!-- ETF 選擇器：手動勾選 or 一鍵分析全部 -->
+  <div class="card">
+    <h2>分析範圍</h2>
+    <p class="sub">目前分析
+      {% if is_all %}<span class="badge">全部 {{ etf_count }} 檔 ETF</span>{% else %}<span class="badge">{{ etf_count }} 檔已選</span>{% endif %}
+      。可勾選特定 ETF 後「分析所選」，或「一鍵分析全部」。
+    </p>
+    <form method="get" action="{% url 'etf_analytics' %}">
+      <div class="selector">
+        {% for e in all_etfs %}
+        <label><input type="checkbox" name="etfs" value="{{ e.etf_id }}"
+          {% if e.etf_id in selected %}checked{% endif %}> {{ e.etf_id }} {{ e.name }}</label>
+        {% endfor %}
+      </div>
+      <div class="actions">
+        <button class="btn" type="submit">分析所選</button>
+        <a class="btn ghost" href="{% url 'etf_analytics' %}">一鍵分析全部</a>
+      </div>
+    </form>
+  </div>
+
+  <div class="toc">
+    <a href="#m-consensus">① 重疊共識股</a>
+    <a href="#m-hidden">② 隱藏強勢股</a>
+    <a href="#m-heat">③ 權重熱力圖</a>
+    <a href="#m-ai">④ AI 智慧選股</a>
+  </div>
+
+  <!-- 模組 A：重疊共識股 -->
+  <div class="card" id="m-consensus">
+    <h2>① 重疊成分股（機構共識股）</h2>
+    <p class="sub">被越多檔 ETF 共同持有 = 機構共識越強。依「重疊 ETF 數 → 總權重」排序。</p>
+    <div class="chart-box"><canvas id="consensusChart"></canvas></div>
+    <table class="an">
+      <thead><tr><th>股票代碼</th><th>名稱</th><th>重疊 ETF 數</th><th>總權重 (%)</th><th>出現 ETF</th></tr></thead>
+      <tbody>
+        {% for r in consensus %}
+        <tr>
+          <td class="code-cell">{{ r.stock_id }}</td><td>{{ r.name }}</td>
+          <td><b>{{ r.etf_count }}</b></td><td>{{ r.total_weight }}</td>
+          <td class="etf-tags">{{ r.etf_list|join:", " }}</td>
+        </tr>
+        {% empty %}<tr><td colspan="5" class="muted">無跨多檔 ETF 的共識股。</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- 模組 B：隱藏強勢股 -->
+  <div class="card" id="m-hidden">
+    <h2>② 隱藏強勢股</h2>
+    <p class="sub">被多檔 ETF 廣泛持有、但單檔權重都不高的潛在標的。Hidden Score = 重疊數 × (1 / 平均權重)，越高越隱藏。</p>
+    <div class="chart-box"><canvas id="hiddenChart"></canvas></div>
+    <table class="an">
+      <thead><tr><th>股票代碼</th><th>名稱</th><th>重疊 ETF 數</th><th>平均權重 (%)</th><th>Hidden Score</th></tr></thead>
+      <tbody>
+        {% for r in hidden %}
+        <tr>
+          <td class="code-cell">{{ r.stock_id }}</td><td>{{ r.name }}</td>
+          <td>{{ r.etf_count }}</td><td>{{ r.avg_weight }}</td><td><b>{{ r.hidden_score }}</b></td>
+        </tr>
+        {% empty %}<tr><td colspan="5" class="muted">無符合的隱藏強勢股。</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- 模組 C：權重熱力圖 -->
+  <div class="card" id="m-heat">
+    <h2>③ ETF × 成分股 權重熱力圖</h2>
+    <p class="sub">交叉權重矩陣，顏色越深代表該 ETF 對該股權重越高（取重疊數最高的前 15 檔個股）。</p>
+    <div class="heat-wrap">
+      <table class="heat">
+        <thead>
+          <tr><th class="rowh">個股 ＼ ETF</th>{% for e in heatmap.etfs %}<th>{{ e }}</th>{% endfor %}</tr>
+        </thead>
+        <tbody>
+          {% for row in heatmap.rows %}
+          <tr>
+            <td class="rowh">{{ row.name }}<span class="code-cell"> {{ row.code }}</span></td>
+            {% for c in row.cells %}
+            <td style="background: rgba(26,115,232,{{ c.alpha }})">{% if c.w %}{{ c.w|floatformat:1 }}{% endif %}</td>
+            {% endfor %}
+          </tr>
+          {% empty %}<tr><td class="muted">無資料。</td></tr>{% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- 模組 D：AI 智慧選股 -->
+  <div class="card" id="m-ai">
+    <h2>④ AI 智慧選股（Top 20）</h2>
+    <p class="sub">三因子量化模型：ETF 共識度 + 隱藏強度 + 近 3 月動能，各自標準化後加權，得出 AI Score。</p>
+    <div class="chart-box"><canvas id="aiChart"></canvas></div>
+    <table class="an">
+      <thead><tr><th>排名</th><th>股票</th><th>重疊數</th><th>Hidden</th><th>動能 (%)</th><th>AI Score</th></tr></thead>
+      <tbody>
+        {% for r in ai %}
+        <tr>
+          <td><span class="rank {% if r.rank > 3 %}dim{% endif %}">{{ r.rank }}</span></td>
+          <td>{{ r.name }} <span class="code-cell">{{ r.stock_id }}</span></td>
+          <td>{{ r.etf_count }}</td><td>{{ r.hidden_score }}</td>
+          <td class="{% if r.momentum > 0 %}pos{% elif r.momentum < 0 %}neg{% endif %}">{{ r.momentum }}</td>
+          <td><b>{{ r.ai_score }}</b></td>
+        </tr>
+        {% empty %}<tr><td colspan="6" class="muted">無資料。</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {{ c_labels|json_script:"c-labels" }}{{ c_counts|json_script:"c-counts" }}{{ c_weights|json_script:"c-weights" }}
+  {{ h_labels|json_script:"h-labels" }}{{ h_scores|json_script:"h-scores" }}
+  {{ ai_labels|json_script:"ai-labels" }}{{ ai_scores|json_script:"ai-scores" }}
+{% endblock %}
+
+{% block body_scripts %}
+<script>
+  const PRIMARY = '#1A73E8', PRIMARY2 = '#4c8ef0', GREEN = '#2E7D32';
+  const j = id => JSON.parse(document.getElementById(id).textContent);
+  // 工廠函式：每張圖拿到全新 options，避免 Chart.js 就地改寫共用物件互相污染
+  const baseOpts = () => ({ responsive: true, maintainAspectRatio: false,
+                            indexAxis: 'x', plugins: { legend: { display: false } } });
+
+  // ① 共識股：重疊 ETF 數 + 總權重（雙資料集長條）
+  new Chart(document.getElementById('consensusChart'), {
+    type: 'bar',
+    data: { labels: j('c-labels'), datasets: [
+      { label: '重疊 ETF 數', data: j('c-counts'), backgroundColor: PRIMARY, yAxisID: 'y' },
+      { label: '總權重 %', data: j('c-weights'), backgroundColor: PRIMARY2, yAxisID: 'y1' } ] },
+    options: { ...baseOpts(), plugins: { legend: { display: true } },
+      scales: { y: { position: 'left', title: { display: true, text: '重疊 ETF 數' } },
+                y1: { position: 'right', grid: { drawOnChartArea: false }, title: { display: true, text: '總權重 %' } } } }
+  });
+
+  // ② 隱藏強勢股：Hidden Score
+  new Chart(document.getElementById('hiddenChart'), {
+    type: 'bar',
+    data: { labels: j('h-labels'), datasets: [{ label: 'Hidden Score', data: j('h-scores'), backgroundColor: GREEN }] },
+    options: baseOpts()
+  });
+
+  // ④ AI Score Top 20
+  new Chart(document.getElementById('aiChart'), {
+    type: 'bar',
+    data: { labels: j('ai-labels'), datasets: [{ label: 'AI Score', data: j('ai-scores'), backgroundColor: PRIMARY }] },
+    options: { responsive: true, maintainAspectRatio: false, indexAxis: 'x',
+               plugins: { legend: { display: false } },
+               scales: { y: { title: { display: true, text: 'AI Score' } } } }
+  });
+</script>
+{% endblock %}

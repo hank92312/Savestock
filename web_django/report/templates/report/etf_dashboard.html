@@ -1,0 +1,93 @@
+{% extends "report/base.html" %}
+{% block title %}ETF 追蹤 | Savestock{% endblock %}
+{% block nav_etf %}active{% endblock %}
+
+{% block extra_css %}
+    .page-h { margin: 4px 0 6px; font-size: 22px; }
+    .group-h { display: flex; align-items: baseline; gap: 10px; margin: 22px 0 12px; }
+    .group-h h2 { font-size: 16px; margin: 0; }
+    .grid {
+      display: grid; gap: 14px;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    }
+    /* 卡片：外層負責定位，內層連結負責視覺 */
+    .etf-card { position: relative; }
+    .etf-card-link {
+      background: #fff; border-radius: 16px; padding: 16px 18px;
+      box-shadow: 0 4px 14px rgba(32,44,68,.08);
+      display: flex; flex-direction: column; gap: 10px; min-height: 116px;
+      transition: transform .12s ease, box-shadow .12s ease;
+    }
+    .etf-card-link:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(32,44,68,.12); }
+    .etf-card-link .code { font-size: 18px; font-weight: 800; color: var(--primary); }
+    .etf-card-link .name { font-size: 14px; color: var(--text); font-weight: 600; }
+    .etf-card-link .go { margin-top: auto; align-self: flex-start; font-size: 13px; font-weight: 700; color: var(--primary); }
+    .etf-card-link .go::after { content: " →"; }
+    /* 刪除鈕：右上角小 ✕ */
+    .del-form { position: absolute; top: 8px; right: 8px; z-index: 2; }
+    .del-form button {
+      width: 24px; height: 24px; border: 0; border-radius: 8px; cursor: pointer;
+      background: rgba(229,57,53,.10); color: var(--red); font-size: 13px; line-height: 1;
+    }
+    .del-form button:hover { background: rgba(229,57,53,.20); }
+    /* 新增表單 */
+    .add-card { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+    .add-card .lbl { font-weight: 700; font-size: 14px; margin-right: 4px; }
+    .add-card input {
+      flex: 1; min-width: 200px; border: 1px solid var(--divider); border-radius: 10px;
+      padding: 9px 12px; font-size: 14px;
+    }
+    .add-card input:focus { outline: none; border-color: var(--primary); }
+    /* 提示訊息 */
+    .msg { border-radius: 12px; padding: 11px 16px; margin-bottom: 12px; font-size: 13.5px; }
+    .msg.success { background: rgba(46,125,50,.10); color: var(--green); border: 1px solid rgba(46,125,50,.25); }
+    .msg.error { background: #fff7e6; color: #9a3b00; border: 1px solid #ffd8a3; }
+{% endblock %}
+
+{% block content %}
+  <h1 class="page-h">ETF 動態追蹤</h1>
+  <p class="muted">追蹤台灣及全球科技 / AI 相關 ETF 的成分股與權重配置，點卡片查看成分股詳情。</p>
+
+  {% for m in messages %}
+    <div class="msg {% if m.tags %}{{ m.tags }}{% endif %}">{{ m }}</div>
+  {% endfor %}
+
+  <!-- 新增自訂 ETF -->
+  <div class="card add-card">
+    <span class="lbl">新增追蹤 ETF</span>
+    <form class="add-card" style="flex:1; margin:0" method="post" action="{% url 'etf_add' %}">
+      {% csrf_token %}
+      <input name="etf_id" placeholder="輸入台股 ETF 代號，例如 0050 或 00757.TW" required
+             pattern="[0-9A-Za-z.]+" title="請輸入 ETF 代號">
+      <button class="btn" type="submit">新增</button>
+    </form>
+  </div>
+
+  {% for g in groups %}
+  <div class="group-h">
+    <h2>{{ g.label }}</h2>
+    <span class="badge">{{ g.etfs|length }} 檔</span>
+  </div>
+  <div class="grid">
+    {% for e in g.etfs %}
+    <div class="etf-card">
+      {% if e.is_custom %}
+      <form class="del-form" method="post" action="{% url 'etf_delete' e.etf_id %}"
+            onsubmit="return confirm('確定移除自訂 ETF {{ e.etf_id }}？');">
+        {% csrf_token %}
+        <button type="submit" title="移除此自訂 ETF">✕</button>
+      </form>
+      {% endif %}
+      <a class="etf-card-link" href="{% url 'etf_holdings' e.etf_id %}">
+        <div class="code">{{ e.etf_id }}</div>
+        <div class="name">{{ e.name }}</div>
+        {% if e.is_custom %}<span class="badge">自訂</span>{% endif %}
+        <span class="go">查看成分股</span>
+      </a>
+    </div>
+    {% endfor %}
+  </div>
+  {% empty %}
+  <div class="card"><p class="muted">目前沒有追蹤中的 ETF。</p></div>
+  {% endfor %}
+{% endblock %}

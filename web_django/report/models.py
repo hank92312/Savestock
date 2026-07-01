@@ -49,3 +49,64 @@ class Dividend(models.Model):
 
     def __str__(self):
         return f"{self.stock_id} {self.ex_date} 配 {self.total}"
+
+
+class DailyPrice(models.Model):
+    """每日收盤價（唯讀）；ETF 成分股頁用來取「最新收盤價」。"""
+    pk = models.CompositePrimaryKey("stock_id", "date")
+    stock_id = models.CharField(max_length=20, db_column="stock_id")
+    date = models.DateField(db_column="date")
+    close_price = models.FloatField(db_column="close_price")
+    volume = models.BigIntegerField(null=True, db_column="volume")
+
+    class Meta:
+        managed = False
+        db_table = "daily_prices"
+        ordering = ["-date"]
+
+
+# ── ETF 追蹤模組（etf_tracker）唯讀模型 ─────────────────────────────
+class EtfMaster(models.Model):
+    etf_id = models.CharField(max_length=20, primary_key=True, db_column="etf_id")
+    name = models.CharField(max_length=100, db_column="name")
+    category = models.CharField(max_length=20, null=True, db_column="category")
+    is_custom = models.BooleanField(default=False, db_column="is_custom")
+    owner_user_id = models.IntegerField(null=True, db_column="owner_user_id")
+
+    class Meta:
+        managed = False
+        db_table = "etf_master"
+        verbose_name = "ETF 主檔"
+        verbose_name_plural = "ETF 主檔"
+
+    def __str__(self):
+        return f"{self.name}（{self.etf_id}）"
+
+
+class EtfHolding(models.Model):
+    """ETF 成分股當前快照（唯讀）。"""
+    pk = models.CompositePrimaryKey("etf_id", "stock_id")
+    etf_id = models.CharField(max_length=20, db_column="etf_id")
+    stock_id = models.CharField(max_length=20, db_column="stock_id")
+    stock_name = models.CharField(max_length=100, null=True, db_column="stock_name")
+    weight = models.FloatField(null=True, db_column="weight")
+    snapshot_date = models.DateField(null=True, db_column="snapshot_date")
+
+    class Meta:
+        managed = False
+        db_table = "etf_holdings"
+        ordering = ["-weight"]
+
+
+class EtfHoldingHistory(models.Model):
+    """ETF 成分股歷史權重（唯讀）；供近 N 天權重趨勢折線圖。"""
+    pk = models.CompositePrimaryKey("etf_id", "stock_id", "date")
+    etf_id = models.CharField(max_length=20, db_column="etf_id")
+    stock_id = models.CharField(max_length=20, db_column="stock_id")
+    date = models.DateField(db_column="date")
+    weight = models.FloatField(null=True, db_column="weight")
+
+    class Meta:
+        managed = False
+        db_table = "etf_holding_history"
+        ordering = ["date"]

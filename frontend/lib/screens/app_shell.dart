@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
+import '../widgets/module_switch_bar.dart';
 import 'home_screen.dart';
 import 'my_stocks_screen.dart';
 import 'dividend_calc_screen.dart';
@@ -42,9 +43,20 @@ class _AppShellState extends State<AppShell> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: IndexedStack(
-        index: _currentIndex,
-        children: _screens,
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          children: [
+            // 頂部模組切換列：存股追蹤 ｜ ETF 追蹤
+            const ModuleSwitchBar(),
+            Expanded(
+              child: IndexedStack(
+                index: _currentIndex,
+                children: _screens,
+              ),
+            ),
+          ],
+        ),
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _currentIndex,

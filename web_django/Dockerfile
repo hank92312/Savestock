@@ -13,6 +13,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # 共用純計算模組（與 backend/core/dividend_calc.py 同一份）
 COPY backend/core /app/core
+# 共用 ETF 成分股抓取/中文名解析（新增自訂 ETF 功能用，與 etl/fetch_etf.py 同一份邏輯）
+COPY etl/etf_source.py etl/name_resolver.py /app/
 COPY web_django /app
 
 # 預先收集 admin 等靜態檔（whitenoise 服務），不需 DB
