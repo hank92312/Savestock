@@ -1,0 +1,14 @@
+# FastAPI 後端的 Cloud Build 設定（build context = repo root，
+# 才能同時納入 backend/ 與共用的 etl/ ETF 抓取邏輯）。
+# 用法：gcloud builds submit --config cloudbuild-api.yaml .
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -t
+      - asia-east1-docker.pkg.dev/savestock-app/savestock-repo/savestock-api:latest
+      - -f
+      - backend/Dockerfile
+      - .
+images:
+  - asia-east1-docker.pkg.dev/savestock-app/savestock-repo/savestock-api:latest
