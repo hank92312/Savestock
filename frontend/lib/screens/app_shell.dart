@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import '../services/api_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/module_switch_bar.dart';
 import 'home_screen.dart';
@@ -26,6 +28,14 @@ class _AppShellState extends State<AppShell> {
   void initState() {
     super.initState();
     _maybeShowOnboarding();
+    _prewarmReportService();
+  }
+
+  /// 報表服務（savestock-report）為省成本設 min=0，冷啟動需 5–10 秒；
+  /// App 一開啟就背景 ping 喚醒，使用者稍後點「ETF 追蹤」時容器多半已醒。
+  /// fire-and-forget：不 await、失敗無害。
+  void _prewarmReportService() {
+    http.get(Uri.parse('${ApiService.reportBase}/warmup')).ignore();
   }
 
   /// 首次開啟（尚未看過導覽）時自動顯示教學導覽

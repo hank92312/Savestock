@@ -47,19 +47,38 @@ class _MyStocksScreenState extends State<MyStocksScreen> {
   }
 
   Future<void> _init() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-    try {
-      final id = await UserService.getOrCreateUserId();
-      final stocks = await ApiService.fetchWatchlist(id);
+    final id = await UserService.getOrCreateUserId();
+    _userId = id;
+
+    // stale-while-revalidate：先顯示裝置端快取，避免每次開啟都轉圈等網路。
+    final cached = await ApiService.loadCachedWatchlist(id);
+    final hasCache = cached != null && cached.isNotEmpty;
+    if (hasCache && mounted) {
       setState(() {
-        _userId = id;
-        _stocks = stocks;
+        _stocks = cached;
         _loading = false;
       });
+    } else if (mounted) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
+
+    try {
+      final stocks = await ApiService.fetchWatchlist(id);
+      if (!mounted) return;
+      setState(() {
+        _stocks = stocks;
+        _loading = false;
+        _error = null;
+      });
     } catch (e) {
+      if (!mounted) return;
+      if (hasCache) {
+        setState(() => _loading = false);
+        return;
+      }
       setState(() {
         _error = '載入失敗，請確認網路連線';
         _loading = false;

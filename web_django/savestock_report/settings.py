@@ -44,6 +44,7 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    "django.middleware.gzip.GZipMiddleware",  # 壓縮 HTML 回應，需放在讀寫 response body 的 middleware 之前
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",  # 在 Cloud Run 上服務 admin 靜態檔
     "django.contrib.sessions.middleware.SessionMiddleware",
@@ -107,3 +108,7 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# ETF 頁面快取（views.py 的 @cache_page）；資料一天只更新一次，locmem 足夠，
+# Cloud Run min=0 重啟即清空也無妨。
+CACHES = {"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}}

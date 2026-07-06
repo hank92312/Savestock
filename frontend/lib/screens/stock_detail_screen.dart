@@ -16,13 +16,38 @@ class StockDetailScreen extends StatefulWidget {
 }
 
 class _StockDetailScreenState extends State<StockDetailScreen> {
-  List<PricePoint>? _prices;
+  // 一次抓滿 365 天／60 個月，區間切換改在前端過濾，避免每次切換都打 API。
+  List<PricePoint>? _allPrices;
   String? _error;
   int _selectedDays = 30;
 
-  List<DividendPoint>? _dividends;
+  List<DividendPoint>? _allDividends;
   String? _divError;
   int _selectedDivMonths = 24;
+
+  /// 依目前選取區間，從已抓滿的 365 天資料前端過濾。
+  List<PricePoint>? get _prices {
+    final all = _allPrices;
+    if (all == null) return null;
+    final cutoff = DateTime.now().subtract(Duration(days: _selectedDays));
+    return all.where((p) => !p.date.isBefore(cutoff)).toList();
+  }
+
+  /// 依目前選取區間，從已抓滿的 60 個月資料前端過濾（以日曆月數計算，避免 ×30 天漂移）。
+  List<DividendPoint>? get _dividends {
+    final all = _allDividends;
+    if (all == null) return null;
+    final cutoff = _monthsAgo(_selectedDivMonths);
+    return all.where((d) => !d.date.isBefore(cutoff)).toList();
+  }
+
+  DateTime _monthsAgo(int months) {
+    final now = DateTime.now();
+    final totalMonths = now.year * 12 + (now.month - 1) - months;
+    final year = totalMonths ~/ 12;
+    final month = totalMonths % 12 + 1;
+    return DateTime(year, month, now.day);
+  }
 
   int? _userId;
   bool? _inWatchlist; // null = 仍在確認中
@@ -50,12 +75,12 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
   }
 
   Future<void> _loadDividends() async {
-    setState(() { _dividends = null; _divError = null; });
+    setState(() { _allDividends = null; _divError = null; });
     try {
       final pts = await ApiService.fetchDividends(
-          widget.stock.stockId, months: _selectedDivMonths);
+          widget.stock.stockId, months: 60);
       if (!mounted) return;
-      setState(() => _dividends = pts);
+      setState(() => _allDividends = pts);
     } catch (_) {
       if (!mounted) return;
       setState(() => _divError = '無法載入股利資料');
@@ -65,7 +90,6 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
   void _selectDivPeriod(int months) {
     if (_selectedDivMonths == months) return;
     setState(() => _selectedDivMonths = months);
-    _loadDividends();
   }
 
   Future<void> _loadWatchlistStatus() async {
@@ -109,12 +133,12 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
   }
 
   Future<void> _loadPrices() async {
-    setState(() { _prices = null; _error = null; });
+    setState(() { _allPrices = null; _error = null; });
     try {
       final pts = await ApiService.fetchPrices(
-          widget.stock.stockId, days: _selectedDays);
+          widget.stock.stockId, days: 365);
       if (!mounted) return;
-      setState(() => _prices = pts.reversed.toList()); // 舊→新排序
+      setState(() => _allPrices = pts.reversed.toList()); // 舊→新排序
     } catch (_) {
       if (!mounted) return;
       setState(() => _error = '無法載入價格資料');
@@ -124,7 +148,6 @@ class _StockDetailScreenState extends State<StockDetailScreen> {
   void _selectPeriod(int days) {
     if (_selectedDays == days) return;
     setState(() => _selectedDays = days);
-    _loadPrices();
   }
 
   @override

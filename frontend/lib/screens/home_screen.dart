@@ -18,18 +18,21 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _loading = true;
   String? _error;
   String _selectedSector = '全部';
+  bool _refreshing = false; // AppBar「更新」按鈕的即時抓取狀態，獨立於背景 stale-while-revalidate
 
   @override
   void initState() {
     super.initState();
-    _loadStocks();
+    _loadCacheThenRefresh();
   }
 
   /// [live] = true 時即時從 yfinance 抓最新價格（較慢，按鈕/下拉用）；
   /// false 為讀 DB 快照（開啟時快速載入）。
   /// [showSpinner] = false 時不切換整頁載入畫面（給下拉刷新用，避免清單閃爍）。
   Future<void> _loadStocks({bool live = false, bool showSpinner = true}) async {
-    if (showSpinner) {
+    // stale-while-revalidate：有裝置端快取先立即顯示，不轉圈，背景再打 API 更新。
+    final hasCache = _stocks.isNotEmpty;
+    if (showSpinner && !hasCache) {
       setState(() {
         _loading = true;
         _error = null;
@@ -45,10 +48,48 @@ class _HomeScreenState extends State<HomeScreen> {
         _error = null;
       });
     } catch (e) {
+      // 已有快取畫面可看時，背景更新失敗不打斷使用者，靜默保留舊資料。
+      if (hasCache) {
+        setState(() => _loading = false);
+        return;
+      }
       setState(() {
         _error = live ? '即時更新失敗，請稍後再試' : '無法載入資料，請確認網路連線';
         _loading = false;
       });
+    }
+  }
+
+  Future<void> _loadCacheThenRefresh() async {
+    final cached = await ApiService.loadCachedDefaultStocks();
+    if (cached != null && cached.isNotEmpty && mounted) {
+      setState(() {
+        _stocks = cached;
+        _loading = false;
+      });
+    }
+    await _loadStocks();
+  }
+
+  /// AppBar「更新」按鈕：使用者主動觸發，即時抓取可能需 50~65 秒，
+  /// 必須明確顯示處理中狀態；失敗也要跳提示，不能像背景 revalidate 一樣靜默吞掉。
+  Future<void> _manualRefresh() async {
+    if (_refreshing) return;
+    setState(() => _refreshing = true);
+    try {
+      final stocks = await ApiService.refreshDefaultStocks();
+      if (!mounted) return;
+      setState(() {
+        _stocks = stocks;
+        _error = null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('即時更新失敗，請稍後再試')),
+      );
+    } finally {
+      if (mounted) setState(() => _refreshing = false);
     }
   }
 
@@ -113,11 +154,18 @@ class _HomeScreenState extends State<HomeScreen> {
               MaterialPageRoute(builder: (_) => const AddStockScreen()),
             ),
           ),
-          // 用「圖示+文字」按鈕，手機無 hover tooltip 也看得懂功能
+          // 用「圖示+文字」按鈕，手機無 hover tooltip 也看得懂功能；
+          // 即時抓取需 50~65 秒，按下後務必顯示轉圈中狀態，避免使用者誤以為沒反應。
           TextButton.icon(
-            onPressed: () => _loadStocks(live: true),
-            icon: const Icon(Icons.refresh_rounded, size: 20),
-            label: const Text('更新'),
+            onPressed: _refreshing ? null : _manualRefresh,
+            icon: _refreshing
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.refresh_rounded, size: 20),
+            label: Text(_refreshing ? '更新中…' : '更新'),
             style: TextButton.styleFrom(
               foregroundColor: AppTheme.primary,
               padding: const EdgeInsets.symmetric(horizontal: 8),

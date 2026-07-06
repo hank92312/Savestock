@@ -1,6 +1,6 @@
 # 專案架構文件：Savestock（長線存股防護系統）
 
-> 最後更新：2026-07-01（Phase 5：ETF 成分股追蹤與進階分析模組上線）
+> 最後更新：2026-07-06（Phase 6：全站效能優化上線）
 > 本文件為專案的單一入口參考：看完即可掌握整體內容與架構。
 > 雲端部署現況見 [第 7 節](#7-雲端部署現況gcp)。
 > ETF 模組完整規格見 [`etf_tracker.md`](etf_tracker.md)。
@@ -239,6 +239,13 @@ Yahoo 財經（含美股/韓股跨境）──(yfinance)──> etl/fetch_etf.py
   * **部署修正**：`backend/Dockerfile` 原以 `backend/` 為 build context，`COPY . .` 不含 `etl/`，上線後 `/etf/refresh` 會 `ModuleNotFoundError`；改為 repo root context（新增 `cloudbuild-api.yaml`），與 Django 的建置方式一致。
   * Cloud Run `savestock-api` request timeout 由 300s 提高至 600s（`/etf/refresh` 抓 83 檔跨境成分股價偶爾超過 300s）。
   * 已部署上線並驗證：16/16 ETF 成分股、82/83 成分股收盤價（剩餘 1 檔跨境股由排程自動補上，逐檔 commit 不會遺失進度）。
+* **全站效能優化 Phase 6**（2026-07-06）：不動架構、針對「網路 round-trip 次數」與「資料明明沒變卻重算/重抓」兩類瓶頸優化。
+  * **後端**：FastAPI／Django 皆加 `GZipMiddleware`，JSON/HTML 傳輸量降 70~80%；`/users/{uid}/watchlist/refresh` 比照 `/stocks/refresh` 加新鮮度檢查（自選股資料 3 天內免即時抓取），「我的股票」🔄 從 ~50 秒降到 <1 秒。
+  * **前端**：首頁／我的股票加裝置端 stale-while-revalidate（`list_cache_service.dart`），開啟先顯示上次快取、背景再更新，二次開啟零轉圈；個股詳情頁改「一次抓滿 365 天/60 個月、區間切換純前端過濾」，切換 30日/半年/1年、半年~5年不再重打 API。
+  * **ETF 模組**：Flutter App 啟動時背景 ping 喚醒 `savestock-report`（min=0 冷啟動用），降低使用者第一次點「ETF 追蹤」的等待；Dashboard／成分股／分析頁加 5 分鐘 `@cache_page`，新增/刪除自訂 ETF 時 `cache.clear()` 避免看到過期畫面。
+  * **踩雷記錄**：喚醒端點原命名 `/healthz`，部署後發現 Cloud Run 預設網域由 Google Front End (GFE) 代理，`/healthz` 路徑被 GFE 保留做內部健康檢查、外部請求直接被攔截回 GFE 自己的 404（不會進到 Django），改名 `/warmup` 才正常；該端點另單獨加 `Access-Control-Allow-Origin: *`（Flutter 端以 fetch 跨來源呼叫，此服務未裝 django-cors-headers）。
+  * **前端**：`frontend/web/_headers` 給 `assets/`／`canvaskit/`／`icons/` 靜態資源加 7 天快取（`index.html`／`main.dart.js` 不設長快取，避免拿到舊版）。
+  * 已部署上線並驗證：三平台（Cloud Run ×2、Netlify）皆確認 gzip/快取/CORS 生效。
 
 ### ⏳ 待辦
 * 通知系統接線（`User_Preferences` 已備欄位）。

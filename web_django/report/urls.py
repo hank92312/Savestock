@@ -4,6 +4,7 @@ from . import views
 
 urlpatterns = [
     path("", views.landing, name="landing"),
+    path("warmup", views.warmup, name="warmup"),
     path("report", views.report, name="report"),
     path("etf", views.etf_dashboard, name="etf_dashboard"),
     path("etf/analytics", views.etf_analytics, name="etf_analytics"),

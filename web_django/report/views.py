@@ -10,8 +10,11 @@ import json
 from datetime import date, timedelta
 
 from django.contrib import messages
+from django.core.cache import cache
 from django.db.models import Sum
+from django.http import HttpResponse
 from django.shortcuts import redirect, render
+from django.views.decorators.cache import cache_page
 from django.views.decorators.http import require_POST
 
 from core.dividend_calc import (
@@ -122,7 +125,26 @@ def landing(request):
     return render(request, "report/landing.html")
 
 
+def warmup(request):
+    """輕量喚醒端點，不查 DB、不 render template；供 Flutter App 啟動時預熱喚醒容器用。
+
+    路徑刻意不叫 /healthz——Cloud Run 的預設網域由 Google Front End (GFE) 代理，
+    GFE 會攔截 /healthz 做內部保留用途，外部請求打不到 Django（直接回 GFE 自己的
+    404 頁面），實測驗證過才發現此陷阱，故改名避開。
+
+    Flutter Web 端以 fetch 呼叫，跨來源（Netlify/localhost → Cloud Run）需要
+    CORS 標頭，此服務未安裝 django-cors-headers，故僅在此端點單獨加上，
+    避免為了一個健康檢查端點引入整套 CORS 套件。
+    """
+    resp = HttpResponse("ok")
+    resp["Access-Control-Allow-Origin"] = "*"
+    return resp
+
+
 # ── ETF 追蹤模組視圖 ─────────────────────────────────────────────────
+# 資料一天只由 Cloud Scheduler 更新一次（15:30），頁面加 5 分鐘快取降低重複計算；
+# 新增/刪除自訂 ETF 時主動 cache.clear()，避免使用者看到過期畫面。
+@cache_page(300)
 def etf_dashboard(request):
     """ETF Dashboard：依族群分組顯示所有追蹤中的 ETF 卡片。"""
     etfs = list(EtfMaster.objects.all())
@@ -155,6 +177,7 @@ def _latest_close_map(stock_ids):
     return out
 
 
+@cache_page(300)
 def etf_holdings(request, etf_id):
     """ETF 成分股詳情頁：Top N 表格 + 權重圓餅 + 核心個股近 10 天權重折線。"""
     etf = EtfMaster.objects.filter(etf_id=etf_id).first()
@@ -266,6 +289,7 @@ def _compute_momentum(stock_ids):
     return out
 
 
+@cache_page(300)
 def etf_analytics(request):
     """四大分析：重疊共識股、隱藏強勢股、權重熱力圖、AI 三因子選股。
 
@@ -369,6 +393,7 @@ def etf_add(request):
             etf_id=etf_id, stock_id=h["stock_id"], date=today, weight=h["weight"],
         )
 
+    cache.clear()  # 清掉 Dashboard/分析頁快取，新增的 ETF 立即可見
     messages.success(request, f"已新增 {etf_name}（{etf_id}），共 {len(holdings)} 檔成分股。收盤價將於下次盤後更新。")
     return redirect("etf_holdings", etf_id=etf_id)
 
@@ -384,5 +409,6 @@ def etf_delete(request, etf_id):
     EtfHolding.objects.filter(etf_id=etf_id).delete()
     EtfHoldingHistory.objects.filter(etf_id=etf_id).delete()
     EtfMaster.objects.filter(etf_id=etf_id).delete()
+    cache.clear()  # 清掉 Dashboard/分析頁快取，刪除結果立即反映
     messages.success(request, f"已移除 {etf.name}（{etf_id}）。")
     return redirect("etf_dashboard")

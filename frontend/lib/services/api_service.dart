@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../models/stock.dart';
 import '../models/portfolio.dart';
+import 'list_cache_service.dart';
 
 class PricePoint {
   final DateTime date;
@@ -60,15 +61,31 @@ class ApiService {
   static Future<List<Stock>> fetchDefaultStocks() async {
     final res = await http.get(Uri.parse('$_base/stocks/'));
     if (res.statusCode != 200) throw Exception('載入失敗 (${res.statusCode})');
-    final List data = jsonDecode(utf8.decode(res.bodyBytes)) as List;
+    final body = utf8.decode(res.bodyBytes);
+    ListCacheService.saveRaw(ListCacheService.defaultStocksKey, body);
+    final List data = jsonDecode(body) as List;
     return data.map((e) => Stock.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  /// 讀取上次快取的預設清單（裝置端），供開啟 App 時立即顯示；無快取回傳 null。
+  static Future<List<Stock>?> loadCachedDefaultStocks() async {
+    final raw = await ListCacheService.loadRaw(ListCacheService.defaultStocksKey);
+    if (raw == null) return null;
+    try {
+      final List data = jsonDecode(raw) as List;
+      return data.map((e) => Stock.fromJson(e as Map<String, dynamic>)).toList();
+    } catch (_) {
+      return null;
+    }
   }
 
   /// 即時從網路更新所有預設股（較慢，供「更新」按鈕/下拉刷新使用）
   static Future<List<Stock>> refreshDefaultStocks() async {
     final res = await http.post(Uri.parse('$_base/stocks/refresh'));
     if (res.statusCode != 200) throw Exception('更新失敗 (${res.statusCode})');
-    final List data = jsonDecode(utf8.decode(res.bodyBytes)) as List;
+    final body = utf8.decode(res.bodyBytes);
+    ListCacheService.saveRaw(ListCacheService.defaultStocksKey, body);
+    final List data = jsonDecode(body) as List;
     return data.map((e) => Stock.fromJson(e as Map<String, dynamic>)).toList();
   }
 
@@ -110,8 +127,22 @@ class ApiService {
   static Future<List<Stock>> fetchWatchlist(int userId) async {
     final res = await http.get(Uri.parse('$_base/users/$userId/watchlist'));
     if (res.statusCode != 200) throw Exception('載入失敗 (${res.statusCode})');
-    final List data = jsonDecode(utf8.decode(res.bodyBytes)) as List;
+    final body = utf8.decode(res.bodyBytes);
+    ListCacheService.saveRaw(ListCacheService.watchlistKey(userId), body);
+    final List data = jsonDecode(body) as List;
     return data.map((e) => Stock.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  /// 讀取上次快取的自選清單（裝置端），供開啟畫面時立即顯示；無快取回傳 null。
+  static Future<List<Stock>?> loadCachedWatchlist(int userId) async {
+    final raw = await ListCacheService.loadRaw(ListCacheService.watchlistKey(userId));
+    if (raw == null) return null;
+    try {
+      final List data = jsonDecode(raw) as List;
+      return data.map((e) => Stock.fromJson(e as Map<String, dynamic>)).toList();
+    } catch (_) {
+      return null;
+    }
   }
 
   static Future<String?> addToWatchlist(int userId, String stockId) async {
@@ -169,6 +200,7 @@ class ApiService {
     if (res.statusCode != 200) throw Exception('更新失敗 (${res.statusCode})');
     final body = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
     final List stocks = body['stocks'] as List;
+    ListCacheService.saveRaw(ListCacheService.watchlistKey(userId), jsonEncode(stocks));
     return stocks.map((e) => Stock.fromJson(e as Map<String, dynamic>)).toList();
   }
 
