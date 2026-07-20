@@ -10,7 +10,10 @@ app = FastAPI(title="Savestock API", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://savestock.netlify.app"],
+    allow_origins=[
+        "https://savestock.netlify.app",
+        "https://hank92312.github.io",
+    ],
     allow_origin_regex=r"http://localhost(:\d+)?",
     allow_credentials=True,
     allow_methods=["*"],
