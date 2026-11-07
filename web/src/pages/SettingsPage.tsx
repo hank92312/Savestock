@@ -195,14 +195,14 @@ export const SettingsPage: React.FC = () => {
               </div>
 
               <div style={{ borderTop: '1px solid var(--border-soft)', paddingTop: 10, marginTop: 4 }}>
-                <div style={{ fontWeight: 700, fontSize: 13.5, marginBottom: 4 }}>方式 B：新手機配對現有帳號</div>
+                <div style={{ fontWeight: 700, fontSize: 13.5, marginBottom: 4 }}>方式 B：第二台裝置快速配對（手機 ↔ 電腦雙向通用）</div>
                 <div className="text-muted" style={{ fontSize: 12, marginBottom: 8 }}>
-                  如果已在 PC 上啟用過，外出手機只需輸入 PC 上產生的 6 位數配對碼（或用相機掃描 QR Code）即可綁定：
+                  無論您先在「手機」或「電腦」設定，若想在另一台裝置同步，只需輸入另一台已啟用裝置顯示的 6 位數配對碼：
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <input
                     className="input"
-                    placeholder="輸入 PC 上顯示的 6 位數配對碼"
+                    placeholder="輸入另一台裝置顯示的 6 位數配對碼"
                     value={pairCodeInput}
                     onChange={(e) => setPairCodeInput(e.target.value)}
                   />
@@ -218,7 +218,7 @@ export const SettingsPage: React.FC = () => {
                 <span style={{ fontWeight: 600 }}>此裝置已綁定雲端同步</span>
                 <div style={{ display: 'flex', gap: 6 }}>
                   <button className="btn" onClick={() => syncWithCloud(true)}>立即同步</button>
-                  <button className="btn btn-primary" onClick={handleStartPair}>📱 產生手機配對 QR Code</button>
+                  <button className="btn btn-primary" onClick={handleStartPair}>📱 產生跨裝置配對碼 / QR Code</button>
                 </div>
               </div>
 
@@ -231,7 +231,7 @@ export const SettingsPage: React.FC = () => {
                       {generatedPairCode}
                     </div>
                     <div className="text-muted" style={{ fontSize: 12 }}>
-                      用手機相機掃描左側 QR Code，或在手機的設定頁輸入此配對碼即可瞬間同步。
+                      在另一台手機或電腦打開設定頁輸入此配對碼（或用手機相機掃描 QR Code），即可瞬間同步！
                     </div>
                   </div>
                 </div>

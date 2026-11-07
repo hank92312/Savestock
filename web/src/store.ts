@@ -29,14 +29,14 @@ async function getIdb() {
   });
 }
 
-// 預設把精選高息股與中華電放進初始體驗清單，讓首次開啟就有豐富畫面
+// 預設把精選高息股與中華電放進初始體驗清單，讓首次開啟就有豐富畫面（updatedAt: 0 確保雲端任何實際持股皆可優先覆蓋）
 const DEFAULT_HOLDINGS: Record<string, UserHolding> = {
-  '0056': { code: '0056', shares: 5000, avgCost: 36.8, basis: '1y', updatedAt: Date.now() },
-  '00878': { code: '00878', shares: 6000, avgCost: 21.5, basis: '1y', updatedAt: Date.now() },
-  '00919': { code: '00919', shares: 4000, avgCost: 24.2, basis: '1y', updatedAt: Date.now() },
-  '2412': { code: '2412', shares: 2000, avgCost: 118.0, basis: '1y', updatedAt: Date.now() },
-  '2892': { code: '2892', shares: 3000, avgCost: 26.5, basis: '1y', updatedAt: Date.now() },
-  '2886': { code: '2886', shares: 0, avgCost: 0, basis: '1y', updatedAt: Date.now() }, // 0 股 = 觀察清單
+  '0056': { code: '0056', shares: 5000, avgCost: 36.8, basis: '1y', updatedAt: 0 },
+  '00878': { code: '00878', shares: 6000, avgCost: 21.5, basis: '1y', updatedAt: 0 },
+  '00919': { code: '00919', shares: 4000, avgCost: 24.2, basis: '1y', updatedAt: 0 },
+  '2412': { code: '2412', shares: 2000, avgCost: 118.0, basis: '1y', updatedAt: 0 },
+  '2892': { code: '2892', shares: 3000, avgCost: 26.5, basis: '1y', updatedAt: 0 },
+  '2886': { code: '2886', shares: 0, avgCost: 0, basis: '1y', updatedAt: 0 }, // 0 股 = 觀察清單
 };
 
 const PROD_SYNC_URL = 'https://savestock-sync.hank92312.workers.dev';
@@ -408,11 +408,12 @@ export const useAppStore = create<AppState>((set, get) => ({
         if (res.ok) {
           const remoteWrap = await res.json();
           if (remoteWrap && remoteWrap.doc) {
-            const merged = mergeUserDocs(get().userDoc, remoteWrap.doc);
-            set({ userDoc: merged });
+            // 若為強制拉取且雲端已有版本，直接以雲端為準（避免新裝置初始範例污染）
+            const nextDoc = (remoteWrap.doc.version || 0) > 1 ? remoteWrap.doc : mergeUserDocs(get().userDoc, remoteWrap.doc);
+            set({ userDoc: nextDoc });
             const db = await getIdb();
-            await db.put(STORE_NAME, merged, DOC_KEY);
-            applyTheme(merged.settings.theme);
+            await db.put(STORE_NAME, nextDoc, DOC_KEY);
+            applyTheme(nextDoc.settings?.theme || 'light');
           }
         }
       }
