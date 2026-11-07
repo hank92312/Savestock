@@ -93,10 +93,10 @@ export const App: React.FC = () => {
         ))}
 
         <div style={{ marginTop: 'auto', padding: '12px 10px', borderTop: '1px solid var(--border-soft)', fontSize: 12 }} className="text-muted">
-          <div>資料日：{meta?.marketDate || '載入中'}</div>
-          <div>全市場：{meta?.counts.total || 0} 檔</div>
-          <div style={{ marginTop: 4 }}>
-            同步：{syncStatus === 'synced' ? '🟢 已連線雲端' : '⚪ 本機 IndexedDB'}
+          <div>收盤日：{meta?.marketDate || '更新中'}</div>
+          <div>涵蓋標的：{meta?.counts.total || 0} 檔</div>
+          <div style={{ marginTop: 4, cursor: 'pointer' }} onClick={() => navigateTab('settings')}>
+            狀態：{syncStatus === 'synced' ? '🟢 雲端同步保護中' : '⚪ 點此開啟雲端備份'}
           </div>
         </div>
       </aside>
@@ -105,8 +105,8 @@ export const App: React.FC = () => {
       <main className="main-content">
         {loading ? (
           <div className="card" style={{ padding: 36, textAlign: 'center' }}>
-            <h2 style={{ fontSize: 18, marginBottom: 6 }}>正在載入全市場靜態索引...</h2>
-            <p className="text-muted">首次載入後即由瀏覽器 Service Worker 快取，二次開啟瞬間呈現</p>
+            <h2 style={{ fontSize: 18, marginBottom: 6 }}>正在載入最新收盤與配息資料...</h2>
+            <p className="text-muted">載入完成後即可離線秒開瀏覽</p>
           </div>
         ) : error ? (
           <div className="card" style={{ padding: 28, borderColor: 'var(--danger)' }}>

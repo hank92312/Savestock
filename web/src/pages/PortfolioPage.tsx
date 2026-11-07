@@ -4,6 +4,7 @@ import React, { useMemo, useState } from 'react';
 import { useAppStore } from '../store';
 import { evaluatePortfolio, simulateCompoundGrowth } from '../calc';
 import { SecurityCard } from '../components/SecurityCard';
+import { BatchImportModal } from '../components/BatchImportModal';
 import type { SecuritySummary } from '../types';
 
 export const PortfolioPage: React.FC<{
@@ -18,6 +19,7 @@ export const PortfolioPage: React.FC<{
 
   const [subTab, setSubTab] = useState<'holdings' | 'watchlist' | 'simulator'>('holdings');
   const [searchAdd, setSearchAdd] = useState('');
+  const [batchModalMode, setBatchModalMode] = useState<'screenshot' | 'text' | null>(null);
   const [monthlySave, setMonthlySave] = useState(15000);
   const [simYield, setSimYield] = useState(5.8);
   const [simYears, setSimYears] = useState(15);
@@ -51,54 +53,69 @@ export const PortfolioPage: React.FC<{
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 700 }}>💼 我的持股與年度股利試算</h1>
           <p className="text-muted" style={{ fontSize: 13.5 }}>
-            統一管理「實際持股」與「觀察清單」（股數設為 0 即為觀察）。自動區分證交所/櫃買「已公告」實際配息與滾動估算，並試算二代健保補充保費（單筆 ≥ 2 萬扣 2.11%）。
+            支援「📸 券商 App 庫存截圖自動辨識」、「📋 整串文字貼上」或單筆搜尋加入。自動試算全年配息與二代健保補充保費（單筆 ≥ 2 萬扣 2.11%）。
           </p>
         </div>
 
-        {/* 快速搜尋加入持股 */}
-        <div style={{ position: 'relative', minWidth: 270 }}>
-          <input
-            className="input"
-            placeholder="🔍 輸入代號或名稱新增持股/觀察..."
-            value={searchAdd}
-            onChange={(e) => setSearchAdd(e.target.value)}
-          />
-          {searchCandidates.length > 0 && (
-            <div
-              className="card"
-              style={{
-                position: 'absolute',
-                top: '105%',
-                left: 0,
-                right: 0,
-                zIndex: 40,
-                padding: 6,
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 4,
-              }}
-            >
-              {searchCandidates.map((c) => (
-                <div
-                  key={c.code}
-                  style={{
-                    padding: '7px 10px',
-                    borderRadius: 'var(--radius-sm)',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                  }}
-                  onClick={() => {
-                    setSearchAdd('');
-                    onQuickEdit(c);
-                  }}
-                >
-                  <span><strong>{c.name}</strong> ({c.code})</span>
-                  <span className="text-muted">{c.price} 元 · 殖利率 {c.yield1y}%</span>
-                </div>
-              ))}
-            </div>
-          )}
+        {/* 快速批次匯入與單筆搜尋 */}
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <button
+            className="btn btn-primary"
+            onClick={() => setBatchModalMode('screenshot')}
+          >
+            📸 券商 App 截圖匯入
+          </button>
+          <button
+            className="btn"
+            onClick={() => setBatchModalMode('text')}
+          >
+            📋 貼上整串文字匯入
+          </button>
+
+          <div style={{ position: 'relative', minWidth: 230 }}>
+            <input
+              className="input"
+              placeholder="🔍 單筆搜尋代號或名稱..."
+              value={searchAdd}
+              onChange={(e) => setSearchAdd(e.target.value)}
+            />
+            {searchCandidates.length > 0 && (
+              <div
+                className="card"
+                style={{
+                  position: 'absolute',
+                  top: '105%',
+                  left: 0,
+                  right: 0,
+                  zIndex: 40,
+                  padding: 6,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 4,
+                }}
+              >
+                {searchCandidates.map((c) => (
+                  <div
+                    key={c.code}
+                    style={{
+                      padding: '7px 10px',
+                      borderRadius: 'var(--radius-sm)',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                    }}
+                    onClick={() => {
+                      setSearchAdd('');
+                      onQuickEdit(c);
+                    }}
+                  >
+                    <span><strong>{c.name}</strong> ({c.code})</span>
+                    <span className="text-muted">{c.price} 元 · 殖利率 {c.yield1y}%</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -120,10 +137,18 @@ export const PortfolioPage: React.FC<{
           {pf.activePositions.length === 0 ? (
             <div className="card" style={{ padding: '36px 20px', textAlign: 'center', background: 'var(--bg-subtle)' }}>
               <div style={{ fontSize: 32, marginBottom: 10 }}>🌱</div>
-              <h3 style={{ fontSize: 17, marginBottom: 6 }}>目前持股清單為空</h3>
-              <p className="text-muted" style={{ fontSize: 13.5, maxWidth: 520, margin: '0 auto 16px', lineHeight: 1.6 }}>
-                請利用上方搜尋框輸入任何股票代號或名稱（例如：<strong>2330 台積電</strong>、<strong>0050</strong>、<strong>00878</strong>、<strong>2412 中華電</strong>），點選後即可設定您的「持有股數」與「買進成本」，系統將自動為您試算除息所得、損益與二代健保補充保費！
+              <h3 style={{ fontSize: 17, marginBottom: 6 }}>目前持股清單為空 — 選擇您最順手的方式新增股票：</h3>
+              <p className="text-muted" style={{ fontSize: 13.5, maxWidth: 540, margin: '0 auto 18px', lineHeight: 1.6 }}>
+                股票或零股很多嗎？不用一檔一檔查！直接上傳手機券商 App 的庫存截圖，或是貼上整理好的文字清單，3 秒鐘一次匯入全部持股！
               </p>
+              <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
+                <button className="btn btn-primary" style={{ padding: '10px 18px', fontSize: 14.5 }} onClick={() => setBatchModalMode('screenshot')}>
+                  📸 上傳券商 App 截圖（自動辨識）
+                </button>
+                <button className="btn" style={{ padding: '10px 18px', fontSize: 14.5 }} onClick={() => setBatchModalMode('text')}>
+                  📋 貼上整串文字一次匯入
+                </button>
+              </div>
             </div>
           ) : (
             <div className="card">
@@ -332,6 +357,13 @@ export const PortfolioPage: React.FC<{
             </div>
           </div>
         </div>
+      )}
+
+      {batchModalMode && (
+        <BatchImportModal
+          initialMode={batchModalMode}
+          onClose={() => setBatchModalMode(null)}
+        />
       )}
     </div>
   );

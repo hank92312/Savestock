@@ -95,6 +95,10 @@ interface AppState {
   fetchDetail: (code: string) => Promise<SecurityDetail | null>;
   loadEtfAnalytics: () => Promise<EtfAnalyticsPayload | null>;
   upsertHolding: (code: string, shares: number, avgCost: number, basis?: '1y' | '5y') => Promise<void>;
+  batchUpsertHoldings: (
+    entries: { code: string; shares: number; avgCost: number; basis?: '1y' | '5y' }[],
+    replaceAll?: boolean,
+  ) => Promise<void>;
   removeHolding: (code: string) => Promise<void>;
   clearAllHoldings: () => Promise<void>;
   addCustomEtf: (code: string) => Promise<void>;
@@ -292,6 +296,45 @@ export const useAppStore = create<AppState>((set, get) => ({
           deleted: false,
         },
       },
+    };
+    set({ userDoc: nextDoc });
+    const db = await getIdb();
+    await db.put(STORE_NAME, nextDoc, DOC_KEY);
+    get().syncWithCloud(false);
+  },
+
+  batchUpsertHoldings: async (entries, replaceAll = false) => {
+    const doc = get().userDoc;
+    const now = Date.now();
+    const nextHoldings: Record<string, UserHolding> = {};
+
+    for (const [code, h] of Object.entries(doc.holdings)) {
+      // 若選擇覆蓋全部、或該筆為初始預設範例 (updatedAt === 0)，自動標記刪除
+      if (replaceAll || h.updatedAt === 0) {
+        nextHoldings[code] = { ...h, deleted: true, updatedAt: now };
+      } else {
+        nextHoldings[code] = { ...h };
+      }
+    }
+
+    for (const item of entries) {
+      const clean = item.code.replace('.TW', '').replace('.TWO', '').toUpperCase();
+      if (!clean) continue;
+      nextHoldings[clean] = {
+        code: clean,
+        shares: Math.max(0, Math.round(Number(item.shares) || 0)),
+        avgCost: Math.max(0, Math.round((Number(item.avgCost) || 0) * 100) / 100),
+        basis: item.basis || nextHoldings[clean]?.basis || '1y',
+        updatedAt: now + 1,
+        deleted: false,
+      };
+    }
+
+    const nextDoc: UserSyncDoc = {
+      ...doc,
+      version: (doc.version || 1) + 1,
+      updatedAt: now + 1,
+      holdings: nextHoldings,
     };
     set({ userDoc: nextDoc });
     const db = await getIdb();
