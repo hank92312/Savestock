@@ -2,9 +2,9 @@ name = "savestock-sync"
 main = "src/index.ts"
 compatibility_date = "2025-01-01"
 
-# 台灣時間週一至週五 15:30 (UTC 07:30) 與 21:30 (UTC 13:30) 自動觸發 GitHub Actions ETL
+# 台灣時間週一至週五 15:30 (UTC 07:30) 每日盤後觸發 1 次
 [triggers]
-crons = ["30 7 * * 1-5", "30 13 * * 1-5"]
+crons = ["30 7 * * 1-5"]
 
 [[d1_databases]]
 binding = "DB"

@@ -4,9 +4,8 @@ on:
   push:
     branches: [main]
   schedule:
-    # 台灣時間週一至週五 15:40 (UTC 07:40) 與 21:40 (UTC 13:40) 自動更新全市場資料並部署
+    # 台灣時間週一至週五 15:40 (UTC 07:40) 每日盤後更新 1 次並寄送摘要通知
     - cron: "40 7 * * 1-5"
-    - cron: "40 13 * * 1-5"
   workflow_dispatch:
 
 permissions:
@@ -68,7 +67,8 @@ jobs:
         with:
           path: web/dist
 
-      - name: Send Personalized Email Digest (if configured)
+      - name: Send Personalized Email Digest (Once Daily on Schedule)
+        if: github.event_name == 'schedule'
         env:
           GMAIL_USER: ${{ secrets.GMAIL_USER || 'hank92312@gmail.com' }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}

@@ -243,10 +243,38 @@ export default {
       if (!secret || secret !== expected) {
         return jsonResponse({ error: 'Forbidden' }, 403, origin);
       }
+      try {
+        await env.DB.prepare('ALTER TABLE users ADD COLUMN last_notified_date TEXT').run();
+      } catch {
+        // 欄位已存在
+      }
       const rows = await env.DB.prepare(
-        'SELECT u.id, u.nickname, u.email, u.notify_daily, u.notify_weekly, d.doc FROM users u LEFT JOIN user_docs d ON u.id = d.user_id',
+        'SELECT u.id, u.nickname, u.email, u.notify_daily, u.notify_weekly, u.last_notified_date, d.doc FROM users u LEFT JOIN user_docs d ON u.id = d.user_id',
       ).all();
       return jsonResponse({ users: rows.results || [] }, 200, origin);
+    }
+
+    // 6. POST /v1/admin/digest-ack — 記錄使用者今日已寄過通知，確保 1 天最多只寄 1 次
+    if (req.method === 'POST' && path === '/v1/admin/digest-ack') {
+      const secret = req.headers.get('Authorization')?.replace('Bearer ', '').trim();
+      const expected = env.ADMIN_SECRET || 'savestock-admin-2026-secret';
+      if (!secret || secret !== expected) {
+        return jsonResponse({ error: 'Forbidden' }, 403, origin);
+      }
+      const body: any = await req.json();
+      const email = String(body.email || '').trim().toLowerCase();
+      const dateStr = String(body.date || '').trim();
+      if (email && dateStr) {
+        try {
+          await env.DB.prepare('ALTER TABLE users ADD COLUMN last_notified_date TEXT').run();
+        } catch {
+          // 欄位已存在
+        }
+        await env.DB.prepare('UPDATE users SET last_notified_date = ? WHERE email = ?')
+          .bind(dateStr, email)
+          .run();
+      }
+      return jsonResponse({ ok: true }, 200, origin);
     }
 
     return jsonResponse({ service: 'savestock-sync-worker', status: 'ok' }, 200, origin);

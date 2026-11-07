@@ -314,3 +314,4 @@ export async function recognizeScreenshots(
   const candidates = parseHoldingsText(combinedText, items);
   return { candidates, rawOcrText: combinedText };
 }
+

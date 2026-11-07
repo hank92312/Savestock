@@ -129,12 +129,17 @@ def run_notify(data_dir: Path, force: bool = False) -> None:
     items: dict = screener.get("items", {})
     curated_codes = set(screener.get("curatedStockCodes", [])) | set(screener.get("curatedEtfCodes", []))
 
+    from datetime import datetime, timezone, timedelta
+    tw_today = datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d")
+    today_key = market_date or tw_today
+
     # 取得收件人清單
     recipients = [
         {
             "nickname": "Hank",
             "email": os.getenv("NOTIFY_EMAIL", "hank92312@gmail.com").strip(),
             "codes": curated_codes,
+            "last_notified_date": None,
         }
     ]
 
@@ -155,18 +160,24 @@ def run_notify(data_dir: Path, force: bool = False) -> None:
                         if not u.get("notify_daily"):
                             continue
                         doc = json.loads(u["doc"]) if u.get("doc") else {}
-                        u_codes = {
+                        raw_holdings = {
                             k for k, v in (doc.get("holdings") or {}).items() if not v.get("deleted")
-                        } | curated_codes
+                        }
+                        u_codes = raw_holdings if raw_holdings else curated_codes
                         recipients.append({
                             "nickname": u.get("nickname") or "存股夥伴",
                             "email": u.get("email") or "hank92312@gmail.com",
                             "codes": u_codes,
+                            "last_notified_date": u.get("last_notified_date"),
                         })
         except Exception as e:
             print(f"[NOTIFY] 無法從 Worker 讀取名單，改用預設收件人: {e}")
 
     for rec in recipients:
+        if not force and rec.get("last_notified_date") == today_key:
+            print(f"[NOTIFY] {rec['email']} 今日 ({today_key}) 已寄送過通知，略過重複寄信。")
+            continue
+
         watch_codes = rec["codes"]
         alerts = [items[c] for c in watch_codes if c in items and items[c].get("alert", {}).get("flag")]
         cheap = sorted(
@@ -186,7 +197,16 @@ def run_notify(data_dir: Path, force: bool = False) -> None:
 
         html = build_digest_html(rec["nickname"], market_date, alerts, cheap, upcoming)
         subject = f"📈 Savestock 盤後摘要 ({market_date}) — {len(alerts)} 檔警示 / {len(upcoming)} 檔即將除權息"
-        send_gmail(rec["email"], subject, html)
+        if send_gmail(rec["email"], subject, html) and worker_url and admin_secret:
+            try:
+                requests.post(
+                    f"{worker_url}/v1/admin/digest-ack",
+                    headers={"Authorization": f"Bearer {admin_secret}"},
+                    json={"email": rec["email"], "date": today_key},
+                    timeout=10,
+                )
+            except Exception:
+                pass
 
 
 def main() -> None:
