@@ -39,7 +39,7 @@ const DEFAULT_HOLDINGS: Record<string, UserHolding> = {
   '2886': { code: '2886', shares: 0, avgCost: 0, basis: '1y', updatedAt: 0 }, // 0 股 = 觀察清單
 };
 
-const PROD_SYNC_URL = 'https://savestock-sync.hank92312.workers.dev';
+export const PROD_SYNC_URL = 'https://savestock-sync.hank92312.workers.dev';
 
 const DEFAULT_SETTINGS: UserSettings = {
   theme: 'light',
@@ -65,7 +65,11 @@ export function mergeUserDocs(local: UserSyncDoc, remote: UserSyncDoc): UserSync
     version: Math.max(local.version || 0, remote.version || 0) + 1,
     holdings: mergedHoldings,
     customEtfs: customSet,
-    settings: { ...DEFAULT_SETTINGS, ...newerSettings },
+    settings: {
+      ...DEFAULT_SETTINGS,
+      ...newerSettings,
+      syncApiUrl: (newerSettings?.syncApiUrl || '').trim() || PROD_SYNC_URL,
+    },
     updatedAt: Date.now(),
   };
 }
@@ -129,9 +133,14 @@ export const useAppStore = create<AppState>((set, get) => ({
       const db = await getIdb();
       const savedDoc = (await db.get(STORE_NAME, DOC_KEY)) as UserSyncDoc | undefined;
       if (savedDoc && savedDoc.holdings) {
+        const mergedSettings = {
+          ...DEFAULT_SETTINGS,
+          ...savedDoc.settings,
+          syncApiUrl: (savedDoc.settings?.syncApiUrl || '').trim() || PROD_SYNC_URL,
+        };
         const merged = {
           ...savedDoc,
-          settings: { ...DEFAULT_SETTINGS, ...savedDoc.settings },
+          settings: mergedSettings,
         };
         set({ userDoc: merged });
         applyTheme(merged.settings.theme);
@@ -393,7 +402,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   syncWithCloud: async (forcePull = false) => {
     const token = get().deviceToken;
-    const apiUrl = (get().userDoc.settings.syncApiUrl || '').replace(/\/+$/, '');
+    const apiUrl = ((get().userDoc.settings.syncApiUrl || '').trim() || PROD_SYNC_URL).replace(/\/+$/, '');
     if (!token || !apiUrl) return false;
 
     set({ syncStatus: 'syncing' });

@@ -16,6 +16,7 @@ export const DashboardPage: React.FC<{
   const screener = useAppStore((s) => s.screener);
   const calendar = useAppStore((s) => s.calendar);
   const userDoc = useAppStore((s) => s.userDoc);
+  const deviceToken = useAppStore((s) => s.deviceToken);
 
   const pf = useMemo(
     () => evaluatePortfolio(userDoc.holdings, screener?.items || {}),
@@ -58,6 +59,39 @@ export const DashboardPage: React.FC<{
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      {/* 新手朋友引導橫幅（尚未啟用雲端同步時顯示） */}
+      {!deviceToken && (
+        <div
+          className="card"
+          style={{
+            background: 'var(--brand-soft)',
+            borderColor: 'var(--brand)',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: 12,
+          }}
+        >
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--brand)' }}>
+              👋 第一次使用嗎？只要 2 步就能建立您個人的專屬存股追蹤表！
+            </div>
+            <div className="text-muted" style={{ fontSize: 13, marginTop: 2 }}>
+              目前畫面上顯示的是預設範例股票。請先設定您的 Email 開啟雲端自動保存，再換成您自己持有的股票：
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button className="btn btn-primary" onClick={() => onNavigateTab('settings')}>
+              1️⃣ 設定我的信箱與雲端同步
+            </button>
+            <button className="btn" onClick={() => onNavigateTab('portfolio')}>
+              2️⃣ 輸入我買的股票
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* 頂部問候與資料日期橫幅 */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 10 }}>
         <div>
