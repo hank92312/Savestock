@@ -15,7 +15,9 @@ export const SettingsPage: React.FC = () => {
   const importDocJson = useAppStore((s) => s.importDocJson);
 
   const [apiUrl, setApiUrl] = useState(userDoc.settings.syncApiUrl || '');
-  const [inviteCode, setInviteCode] = useState('');
+  const [inviteCode, setInviteCode] = useState('HANK-ADMIN');
+  const [regNick, setRegNick] = useState(userDoc.settings.nickname || '');
+  const [regEmail, setRegEmail] = useState(userDoc.settings.email || '');
   const [pairCodeInput, setPairCodeInput] = useState('');
   const [generatedPairCode, setGeneratedPairCode] = useState<string | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
@@ -40,19 +42,27 @@ export const SettingsPage: React.FC = () => {
       setMsg('請先填入你的 Cloudflare Worker 同步網址');
       return;
     }
+    const finalEmail = (regEmail || userDoc.settings.email || '').trim().toLowerCase();
+    if (!finalEmail) {
+      setMsg('請填寫接收盤後異常警示與除息通知的 Email 信箱');
+      return;
+    }
+    const finalNick = (regNick || userDoc.settings.nickname || '存股夥伴').trim();
+
     try {
       const res = await fetch(`${base}/v1/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           inviteCode: inviteCode.trim() || 'HANK-ADMIN',
-          nickname: userDoc.settings.nickname,
-          email: userDoc.settings.email,
+          nickname: finalNick,
+          email: finalEmail,
           doc: userDoc,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || '註冊失敗');
+      await updateSettings({ nickname: finalNick, email: finalEmail });
       await setDeviceToken(data.token, base);
       setMsg(`✅ 啟用成功！裝置已綁定雲端同步（復原碼：${data.recoveryCode || '已儲存'}）`);
     } catch (e: any) {
@@ -142,27 +152,64 @@ export const SettingsPage: React.FC = () => {
           </div>
 
           {!deviceToken ? (
-            <div style={{ background: 'var(--bg-subtle)', padding: 12, borderRadius: 'var(--radius-md)', display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <div style={{ fontWeight: 600, fontSize: 13.5 }}>方式 A：首次啟用帳號（輸入邀請碼）</div>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <input
-                  className="input"
-                  placeholder="邀請碼 (預設 HANK-ADMIN)"
-                  value={inviteCode}
-                  onChange={(e) => setInviteCode(e.target.value)}
-                />
-                <button className="btn btn-primary" onClick={handleRegisterWithInvite}>啟用雲端同步</button>
+            <div style={{ background: 'var(--bg-subtle)', padding: 14, borderRadius: 'var(--radius-md)', display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--brand)' }}>方式 A：首次啟用（自己或朋友獨立帳號）</div>
+              <p className="text-muted" style={{ fontSize: 12.5, margin: 0, lineHeight: 1.5 }}>
+                每位朋友填寫各自的名字與 Email 點擊啟用，系統會在 D1 自動分配各自獨立的持股記錄，各自保密且每日各別寄信通知！
+              </p>
+
+              <div className="grid-2">
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 600, display: 'block', marginBottom: 3 }}>你的暱稱</label>
+                  <input
+                    className="input"
+                    placeholder="例：Hank 或 小王"
+                    value={regNick}
+                    onChange={(e) => setRegNick(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 600, display: 'block', marginBottom: 3 }}>接收通知 Email (必填)</label>
+                  <input
+                    className="input"
+                    placeholder="例：hank92312@gmail.com"
+                    value={regEmail}
+                    onChange={(e) => setRegEmail(e.target.value)}
+                  />
+                </div>
               </div>
 
-              <div style={{ fontWeight: 600, fontSize: 13.5, marginTop: 6 }}>方式 B：新手機配對現有帳號（輸入 6 位數配對碼）</div>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <input
-                  className="input"
-                  placeholder="輸入 PC 上顯示的 6 位數配對碼"
-                  value={pairCodeInput}
-                  onChange={(e) => setPairCodeInput(e.target.value)}
-                />
-                <button className="btn btn-primary" onClick={handleClaimPair}>綁定此裝置</button>
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 600, display: 'block', marginBottom: 3 }}>專屬邀請碼</label>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input
+                    className="input"
+                    placeholder="預設 HANK-ADMIN"
+                    value={inviteCode}
+                    onChange={(e) => setInviteCode(e.target.value)}
+                  />
+                  <button className="btn btn-primary" style={{ whiteSpace: 'nowrap' }} onClick={handleRegisterWithInvite}>
+                    一鍵啟用雲端同步
+                  </button>
+                </div>
+              </div>
+
+              <div style={{ borderTop: '1px solid var(--border-soft)', paddingTop: 10, marginTop: 4 }}>
+                <div style={{ fontWeight: 700, fontSize: 13.5, marginBottom: 4 }}>方式 B：新手機配對現有帳號</div>
+                <div className="text-muted" style={{ fontSize: 12, marginBottom: 8 }}>
+                  如果已在 PC 上啟用過，外出手機只需輸入 PC 上產生的 6 位數配對碼（或用相機掃描 QR Code）即可綁定：
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input
+                    className="input"
+                    placeholder="輸入 PC 上顯示的 6 位數配對碼"
+                    value={pairCodeInput}
+                    onChange={(e) => setPairCodeInput(e.target.value)}
+                  />
+                  <button className="btn btn-primary" style={{ whiteSpace: 'nowrap' }} onClick={handleClaimPair}>
+                    綁定此裝置
+                  </button>
+                </div>
               </div>
             </div>
           ) : (

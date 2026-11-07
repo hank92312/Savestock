@@ -138,8 +138,8 @@ def run_notify(data_dir: Path, force: bool = False) -> None:
         }
     ]
 
-    worker_url = os.getenv("SYNC_WORKER_URL", "").strip().rstrip("/")
-    admin_secret = os.getenv("ADMIN_SECRET", "").strip()
+    worker_url = os.getenv("SYNC_WORKER_URL", "https://savestock-sync.hank92312.workers.dev").strip().rstrip("/")
+    admin_secret = os.getenv("ADMIN_SECRET", "savestock-admin-2026-secret").strip()
     if worker_url and admin_secret:
         try:
             r = requests.get(

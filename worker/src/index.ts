@@ -81,9 +81,13 @@ export default {
     if (req.method === 'POST' && path === '/v1/register') {
       const body: any = await req.json();
       const inviteCode = String(body.inviteCode || 'HANK-ADMIN').trim();
-      const email = String(body.email || 'hank92312@gmail.com').trim();
-      const nickname = String(body.nickname || 'Hank').trim();
+      const email = String(body.email || '').trim().toLowerCase();
+      const nickname = String(body.nickname || '存股夥伴').trim();
       const doc = body.doc || {};
+
+      if (!email) {
+        return jsonResponse({ error: '請填寫接收通知的 Email' }, 400, origin);
+      }
 
       const inv = await env.DB.prepare(
         'SELECT code, expires_at FROM invites WHERE code = ?',
@@ -91,7 +95,7 @@ export default {
         .bind(inviteCode)
         .first();
       if (!inv || Number(inv.expires_at) < Date.now()) {
-        return jsonResponse({ error: '邀請碼無效或已過期' }, 403, origin);
+        return jsonResponse({ error: '邀請碼無效或已過期（預設邀請碼為 HANK-ADMIN）' }, 403, origin);
       }
 
       const existingUser = await env.DB.prepare('SELECT id FROM users WHERE email = ?')
@@ -102,6 +106,12 @@ export default {
       let recoveryCode = '';
       if (existingUser) {
         userId = Number(existingUser.id);
+        // 若已有帳號，更新暱稱
+        if (nickname) {
+          await env.DB.prepare('UPDATE users SET nickname = ? WHERE id = ?')
+            .bind(nickname, userId)
+            .run();
+        }
       } else {
         recoveryCode = randomToken(8).toUpperCase();
         const recHash = await sha256Hex(recoveryCode);
@@ -205,17 +215,21 @@ export default {
 
         // 同步更新使用者的 Email 與通知開關
         if (incomingDoc.settings) {
-          await env.DB.prepare(
-            'UPDATE users SET nickname = ?, email = ?, notify_daily = ?, notify_weekly = ? WHERE id = ?',
-          )
-            .bind(
-              incomingDoc.settings.nickname || 'Hank',
-              incomingDoc.settings.email || 'hank92312@gmail.com',
-              incomingDoc.settings.notifyDaily ? 1 : 0,
-              incomingDoc.settings.notifyWeekly ? 1 : 0,
-              auth.userId,
+          const userEmail = (incomingDoc.settings.email || '').trim().toLowerCase();
+          const userNick = (incomingDoc.settings.nickname || '').trim() || '存股夥伴';
+          if (userEmail) {
+            await env.DB.prepare(
+              'UPDATE users SET nickname = ?, email = ?, notify_daily = ?, notify_weekly = ? WHERE id = ?',
             )
-            .run();
+              .bind(
+                userNick,
+                userEmail,
+                incomingDoc.settings.notifyDaily ? 1 : 0,
+                incomingDoc.settings.notifyWeekly ? 1 : 0,
+                auth.userId,
+              )
+              .run();
+          }
         }
 
         return jsonResponse({ ok: true, version: nextVer }, 200, origin);
@@ -225,7 +239,8 @@ export default {
     // 5. GET /v1/admin/digest — 供 GitHub Actions Email 通知讀取所有啟用通知的使用者與持股
     if (req.method === 'GET' && path === '/v1/admin/digest') {
       const secret = req.headers.get('Authorization')?.replace('Bearer ', '').trim();
-      if (!env.ADMIN_SECRET || secret !== env.ADMIN_SECRET) {
+      const expected = env.ADMIN_SECRET || 'savestock-admin-2026-secret';
+      if (!secret || secret !== expected) {
         return jsonResponse({ error: 'Forbidden' }, 403, origin);
       }
       const rows = await env.DB.prepare(

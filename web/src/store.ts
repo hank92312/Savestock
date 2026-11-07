@@ -39,14 +39,16 @@ const DEFAULT_HOLDINGS: Record<string, UserHolding> = {
   '2886': { code: '2886', shares: 0, avgCost: 0, basis: '1y', updatedAt: Date.now() }, // 0 股 = 觀察清單
 };
 
+const PROD_SYNC_URL = 'https://savestock-sync.hank92312.workers.dev';
+
 const DEFAULT_SETTINGS: UserSettings = {
   theme: 'light',
   notifyDaily: true,
   notifyWeekly: true,
-  email: 'hank92312@gmail.com',
-  nickname: 'Hank',
+  email: '',
+  nickname: '存股夥伴',
   targetMonthlyDividend: 20000,
-  syncApiUrl: localStorage.getItem('savestock_sync_api') || '',
+  syncApiUrl: localStorage.getItem('savestock_sync_api') || PROD_SYNC_URL,
 };
 
 export function mergeUserDocs(local: UserSyncDoc, remote: UserSyncDoc): UserSyncDoc {
@@ -90,6 +92,7 @@ interface AppState {
   loadEtfAnalytics: () => Promise<EtfAnalyticsPayload | null>;
   upsertHolding: (code: string, shares: number, avgCost: number, basis?: '1y' | '5y') => Promise<void>;
   removeHolding: (code: string) => Promise<void>;
+  clearAllHoldings: () => Promise<void>;
   addCustomEtf: (code: string) => Promise<void>;
   removeCustomEtf: (code: string) => Promise<void>;
   updateSettings: (patch: Partial<UserSettings>) => Promise<void>;
@@ -293,6 +296,24 @@ export const useAppStore = create<AppState>((set, get) => ({
     const nextHoldings = { ...doc.holdings };
     if (nextHoldings[clean]) {
       nextHoldings[clean] = { ...nextHoldings[clean], deleted: true, updatedAt: Date.now() };
+    }
+    const nextDoc: UserSyncDoc = {
+      ...doc,
+      version: (doc.version || 1) + 1,
+      updatedAt: Date.now(),
+      holdings: nextHoldings,
+    };
+    set({ userDoc: nextDoc });
+    const db = await getIdb();
+    await db.put(STORE_NAME, nextDoc, DOC_KEY);
+    get().syncWithCloud(false);
+  },
+
+  clearAllHoldings: async () => {
+    const doc = get().userDoc;
+    const nextHoldings: Record<string, UserHolding> = {};
+    for (const [code, h] of Object.entries(doc.holdings)) {
+      nextHoldings[code] = { ...h, deleted: true, updatedAt: Date.now() };
     }
     const nextDoc: UserSyncDoc = {
       ...doc,

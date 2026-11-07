@@ -73,8 +73,8 @@ jobs:
           GMAIL_USER: ${{ secrets.GMAIL_USER || 'hank92312@gmail.com' }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           NOTIFY_EMAIL: ${{ secrets.NOTIFY_EMAIL || 'hank92312@gmail.com' }}
-          SYNC_WORKER_URL: ${{ secrets.SYNC_WORKER_URL }}
-          ADMIN_SECRET: ${{ secrets.ADMIN_SECRET }}
+          SYNC_WORKER_URL: ${{ secrets.SYNC_WORKER_URL || 'https://savestock-sync.hank92312.workers.dev' }}
+          ADMIN_SECRET: ${{ secrets.ADMIN_SECRET || 'savestock-admin-2026-secret' }}
         run: |
           python -m pipeline.notify.send_digest --data web/public/data
 

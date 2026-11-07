@@ -15,4 +15,5 @@ database_id = "8048270a-a909-4a75-a44a-45829f3bfd8c"
 ALLOWED_ORIGIN = "https://hank92312.github.io"
 GITHUB_REPO = "hank92312/Savestock"
 GITHUB_WORKFLOW = "deploy-pages.yml"
+ADMIN_SECRET = "savestock-admin-2026-secret"
 
