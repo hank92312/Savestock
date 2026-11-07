@@ -20,31 +20,20 @@ npm run dev
 
 ---
 
-## 2. 啟用 Cloudflare Workers + D1 跨裝置同步（完全免費、免綁信用卡）
+## 2. Cloudflare Workers + D1 跨裝置同步（已正式上線）
 
-你在昨日已建立 Cloudflare 帳號，只需在 `worker/` 目錄執行以下 4 行指令即可部署完成：
+- **雲端同步 API 網址**：`https://savestock-sync.hank92312.workers.dev`
+- **D1 Database ID**：`8048270a-a909-4a75-a44a-45829f3bfd8c`
+- **預設邀請碼**：`HANK-ADMIN`
 
-```powershell
-cd D:\Savestock\worker
-npm install
-
-# 1. 登入 Cloudflare 帳號（會開啟瀏覽器授權）
-npx wrangler login
-
-# 2. 建立免費 D1 資料庫（執行後會印出 database_id，請貼回 worker/wrangler.toml 的 database_id）
-npx wrangler d1 create savestock-db
-
-# 3. 初始化資料表與預設邀請碼 (HANK-ADMIN)
-npx wrangler d1 execute savestock-db --remote --file=./schema.sql
-
-# 4. 部署 Worker 上線（會印出 https://savestock-sync.<你的子網域>.workers.dev）
-npx wrangler deploy
-```
-
-### PC 與外出手機配對步驟：
-1. 在 PC 打開 `https://hank92312.github.io/Savestock/#/settings`。
-2. 在「Cloudflare Worker 同步服務網址」填入剛才部署出的 `https://savestock-sync.<你的子網域>.workers.dev`，邀請碼填 `HANK-ADMIN`，點擊「**啟用雲端同步**」。
-3. 點擊「**📱 產生手機配對 QR Code**」，用手機相機掃描畫面上的 QR Code（或在手機輸入 6 位數配對碼），手機與 PC 即完成綁定，之後任何一方修改持股，另一方打開分頁即自動同步！
+### 手機 ↔ 電腦雙向配對與朋友獨立帳號步驟：
+1. **初次設定（手機或電腦皆可）**：
+   - 打開 `https://hank92312.github.io/Savestock/#/settings`。
+   - 填寫「暱稱」與「接收通知 Email」，邀請碼維持預設 `HANK-ADMIN`，點擊「**一鍵啟用雲端同步**」。
+   - **朋友使用**：每位朋友只要填寫他自己的 Email 並點擊啟用，系統會在 D1 自動分配各自獨立的帳戶與持股記錄，彼此互不干擾且各自接收盤後 Email。
+2. **第二台裝置同步（手機配電腦 或 電腦配手機）**：
+   - **方法 A**：在第二台裝置輸入同一個 Email 點擊「一鍵啟用雲端同步」，系統自動識別並下載現有持股。
+   - **方法 B**：在第一台裝置點擊「**📱 產生跨裝置配對碼 / QR Code**」，在第二台裝置輸入 6 位數配對碼（或掃描 QR Code）即可完成綁定！
 
 ---
 
