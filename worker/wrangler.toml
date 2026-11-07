@@ -1,0 +1,17 @@
+name = "savestock-sync"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+
+# 台灣時間週一至週五 15:30 (UTC 07:30) 與 21:30 (UTC 13:30) 自動觸發 GitHub Actions ETL
+[triggers]
+crons = ["30 7 * * 1-5", "30 13 * * 1-5"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "savestock-db"
+database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+
+[vars]
+ALLOWED_ORIGIN = "https://hank92312.github.io"
+GITHUB_REPO = "hank92312/Savestock"
+GITHUB_WORKFLOW = "deploy-pages.yml"

@@ -7,8 +7,14 @@ __pycache__/
 .coverage
 htmlcov/
 
-# Flutter
-build/
+# Node / Vite / Wrangler
+node_modules/
+web/dist/
+worker/.wrangler/
+.tsbuildinfo
+*.tsbuildinfo
+
+# Flutter (legacy)
 .dart_tool/
 .packages
 .pub-cache/

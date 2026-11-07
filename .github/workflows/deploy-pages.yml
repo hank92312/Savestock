@@ -1,11 +1,12 @@
-name: Deploy Frontend to GitHub Pages
+name: Daily Pipeline & Deploy to GitHub Pages
 
 on:
   push:
     branches: [main]
-    paths:
-      - "frontend/**"
-      - ".github/workflows/deploy-pages.yml"
+  schedule:
+    # 台灣時間週一至週五 15:40 (UTC 07:40) 與 21:40 (UTC 13:40) 自動更新全市場資料並部署
+    - cron: "40 7 * * 1-5"
+    - cron: "40 13 * * 1-5"
   workflow_dispatch:
 
 permissions:
@@ -18,36 +19,72 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
+  build-and-deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - uses: actions/configure-pages@v5
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
         with:
           enablement: true
 
-      - uses: subosito/flutter-action@v2
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
         with:
-          channel: stable
-          cache: true
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: pipeline/requirements.txt
 
-      - name: Build Flutter Web
-        working-directory: frontend
+      - name: Install Python dependencies & Run unit tests
         run: |
-          flutter pub get
-          flutter build web --release --base-href /Savestock/
+          pip install -r pipeline/requirements.txt pytest
+          python -m pytest pipeline/tests/ -q
 
-      - uses: actions/upload-pages-artifact@v3
+      - name: Run All-Market Data Pipeline (TWSE / TPEx / TDCC / MoneyDJ / FinMind)
+        env:
+          FINMIND_TOKEN: ${{ secrets.FINMIND_TOKEN }}
+        run: |
+          python -m pipeline.build.run_pipeline --out web/public/data
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
         with:
-          path: frontend/build/web
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: web/package-lock.json
+
+      - name: Build React + Vite PWA Frontend
+        working-directory: web
+        env:
+          GITHUB_ACTIONS: "true"
+        run: |
+          npm ci
+          npm run build
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: web/dist
+
+      - name: Send Personalized Email Digest (if configured)
+        env:
+          GMAIL_USER: ${{ secrets.GMAIL_USER || 'hank92312@gmail.com' }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          NOTIFY_EMAIL: ${{ secrets.NOTIFY_EMAIL || 'hank92312@gmail.com' }}
+          SYNC_WORKER_URL: ${{ secrets.SYNC_WORKER_URL }}
+          ADMIN_SECRET: ${{ secrets.ADMIN_SECRET }}
+        run: |
+          python -m pipeline.notify.send_digest --data web/public/data
 
   deploy:
-    needs: build
+    needs: build-and-deploy
     runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - id: deployment
+      - name: Deploy to GitHub Pages
+        id: deployment
         uses: actions/deploy-pages@v4

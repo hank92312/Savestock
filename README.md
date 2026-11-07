@@ -1,159 +1,54 @@
-<h1 align="center">📈 Savestock — 長線存股防護系統</h1>
+<h1 align="center">📈 Savestock v2 — 長線存股健康防護與 ETF 智慧追蹤系統</h1>
 
 <p align="center">
-  協助存股族避開「高殖利率陷阱」的台股追蹤與年度股利試算系統，並延伸至 ETF 成分股追蹤與 AI 選股分析<br/>
-  <em>個人全端專案 ‧ 從資料爬取、API、跨平台前端到雲端部署皆獨立完成</em>
-</p>
-
-<p align="center">
-  <a href="https://savestock.netlify.app"><b>🔗 線上 Demo</b></a> ‧
-  <a href="PORTFOLIO.md"><b>📖 作品集說明書</b></a> ‧
-  <a href="APP.md"><b>🏗️ 架構文件</b></a>
-</p>
-
-<p align="center">
-  <img src="https://img.shields.io/badge/Flutter-Web-02569B?logo=flutter&logoColor=white" />
-  <img src="https://img.shields.io/badge/FastAPI-Python-009688?logo=fastapi&logoColor=white" />
-  <img src="https://img.shields.io/badge/Django-報表服務-092E20?logo=django&logoColor=white" />
-  <img src="https://img.shields.io/badge/PostgreSQL-Neon-4169E1?logo=postgresql&logoColor=white" />
-  <img src="https://img.shields.io/badge/GCP-Cloud%20Run-4285F4?logo=googlecloud&logoColor=white" />
-  <img src="https://img.shields.io/badge/Netlify-CDN-00C7B7?logo=netlify&logoColor=white" />
+  <b>全市場靜態極速架構（上市 + 上櫃 + ETF 共 2,370+ 檔）‧ 永久 $0 維護成本 ‧ PC / 手機跨裝置雲端同步</b><br/>
+  🔗 <b>線上正式站（GitHub Pages）</b>：<a href="https://hank92312.github.io/Savestock/">https://hank92312.github.io/Savestock/</a>
 </p>
 
 ---
 
-## 💡 這個專案在解決什麼問題？
+## ✨ v2 全面升級重點
 
-市面上的存股 App 多半只顯示「當前殖利率」，但這個數字有兩個盲點：
-
-- **高殖利率陷阱**：股價暴跌會讓殖利率「假性升高」，新手容易誤判為買點。
-- **股利估算過於樂觀**：季配股年中「已配金額」不等於全年，直接外推會嚴重失真。
-
-Savestock 用**多年平均股利**算真實殖利率、用**產業分級閾值 + 爆量偵測**主動警示異常下跌，並提供**年度股利試算**（區分證交所「已公告」實際值與歷史估算值）。
-
----
-
-## ✨ 主要功能
-
-- 📊 **25 檔預設存股清單** — 依近一年殖利率排序，盤後自動更新
-- 🔍 **全台股搜尋與追蹤** — 模糊搜尋代號/中文名，自選股管理
-- 🚨 **異常警示** — 產業分級暴跌閾值（2.5%~6%）+ 2.5× 爆量偵測
-- 🧮 **年度股利試算** — 輸入持股估算今年可領股利，區分已公告 vs 估算
-- 🔗 **可分享報表** — 一鍵分享至 LINE/Facebook、複製連結、截圖成 PNG
-- 📈 **互動圖表** — 收盤價與股利歷史折線圖
-- 🧠 **ETF 成分股追蹤與進階分析（新）** — 16 檔科技/AI 主題 ETF，每日自動更新成分股與跨境收盤價；提供機構共識股、隱藏強勢股、權重熱力圖、三因子 AI 選股 4 種分析
-- ➕ **自訂 ETF** — 使用者可自行加入追蹤清單外的 ETF，隔日自動納入每日更新
-
----
-
-## 📱 畫面預覽
-
-<table>
-  <tr>
-    <td width="50%">
-      <img src="docs/screenshots/home.png" alt="預設清單" />
-      <p align="center"><sub><b>預設清單</b> — 依殖利率排序的 25 檔存股，支援產業篩選</sub></p>
-    </td>
-    <td width="50%">
-      <img src="docs/screenshots/detail.png" alt="個股詳情" />
-      <p align="center"><sub><b>個股詳情</b> — 近一年／2 年／5 年殖利率與收盤價走勢圖</sub></p>
-    </td>
-  </tr>
-  <tr>
-    <td width="50%">
-      <img src="docs/screenshots/dividend-calc.png" alt="股利試算" />
-      <p align="center"><sub><b>股利試算</b> — 輸入持股估算今年可領股利</sub></p>
-    </td>
-    <td width="50%">
-      <img src="docs/screenshots/estimate-info.png" alt="估算透明度" />
-      <p align="center"><sub><b>估算透明度</b> — 區分「已公告」與歷史推估，並提示高權重個股</sub></p>
-    </td>
-  </tr>
-</table>
-
----
-
-## 🏗️ 技術架構
-
-```mermaid
-graph TD
-    B[瀏覽器 / 手機] --> F[Flutter Web @ Netlify]
-    F -->|REST / JSON| API[FastAPI · Cloud Run]
-    F -->|分享報表 URL / ETF 分析頁| DJ[Django 報表 · Cloud Run]
-    API --> DB[(Neon PostgreSQL)]
-    DJ --> DB
-    API -.即時補抓.-> YF[Yahoo Finance]
-    API -.已公告配息.-> TWSE[證交所 OpenAPI]
-    DJ -.成分股/跨境收盤價.-> YF
-    SCH[Cloud Scheduler<br/>週一~五 15:00] -->|觸發股價 ETL| API
-    SCH2[Cloud Scheduler<br/>週一~五 15:30] -->|觸發 ETF ETL| API
-    SEC[Secret Manager] -.注入機密.-> API
-    SEC -.注入機密.-> DJ
-```
-
-| 分層 | 技術 |
-|---|---|
-| 前端 | **Flutter (Dart) Web** — 一套程式碼跨平台、`fl_chart` 財經圖表 |
-| 後端 API | **Python FastAPI** — 非同步、Pydantic 型別驗證、自帶 OpenAPI |
-| 報表服務 | **Django** — 伺服器渲染可分享/可列印報表 + Admin |
-| ETL | **Python (yfinance + SQLAlchemy)** — 盤後批次運算 |
-| 資料庫 | **PostgreSQL (Neon)** / SQLite — `DATABASE_URL` 無痛切換 |
-| 雲端 | **GCP Cloud Run / Build / Scheduler / Secret Manager** |
-| 托管 | **Netlify**（前端 CDN） |
-
-> 完整技術選型理由與架構決策見 **[作品集說明書 PORTFOLIO.md](PORTFOLIO.md)**。
-
----
-
-## 🔑 技術亮點
-
-- **共用計算層**：抽出框架無關的 `backend/core/` 純函式層，FastAPI 與 Django **共用同一份股利計算 / ETF 分析邏輯**，杜絕雙頭維護。
-- **ETF 四大分析模組**：`backend/core/etf_analytics.py` 純函式實作機構共識股、隱藏強勢股、權重熱力圖、三因子 AI 選股，附 9 個 pytest 驗證核心邏輯。
-- **效能調校**：DB 快取優先 + `ThreadPoolExecutor` 並行抓取，自選股刷新從 250 秒降至 ~50 秒。
-- **無狀態分享報表**：持股資料 base64 編碼進 URL（`/report?d=...`），分享不需資料庫寫入。
-- **成本意識**：Cloud SQL → Neon 免費方案（DB 月費歸零）、Cloud Run `min=0` 冷啟動省錢。
-- **Serverless DevOps**：Cloud Build 遠端建置（本機免裝 Docker）、Secret Manager 注入機密、Cloud Scheduler 無人值守排程。
+1. **⚡ 查詢速度極致優化（< 50ms 零等待）**
+   - 徹底移除會冷啟動與 500 斷線的傳統雲端伺服器，改由每日盤後自動化資料管線（`pipeline/`）一次向**臺灣證券交易所（TWSE）**、**櫃買中心（TPEx）**、**集保結算所（TDCC）**與**公開財經資料庫**抓取全市場 **2,370+ 檔**（含上市、上櫃、高股息/市值/科技AI/債券/海外 ETF）完整數據並預先算好所有指標，輸出為靜態 JSON 部署至 GitHub Pages CDN。
+   - 前端改寫為 **React 19 + TypeScript + Vite PWA**（首屏 gzip 僅 ~100 KB），搭配 Service Worker `StaleWhileRevalidate` 快取，手機與電腦開啟瞬間呈現。
+2. **💰 永久 $0 成本維護（Cloudflare Workers + D1 跨裝置同步）**
+   - 支援 **PC ↔ 外出手機瀏覽器即時同步**：在 PC 點擊「產生手機配對 QR Code」，手機掃描即完成綁定（基於免費 Cloudflare Workers + D1 SQLite，免綁信用卡）。
+   - 離線優先（IndexedDB 本地副本 + 雲端自動樂觀鎖合併）。
+3. **🎨 存股與 ETF 同款溫潤自然介面**
+   - 採用低對比暖紙色（Warm Paper `#F7F5F0`）與柔和夜間深色雙主題，存股追蹤與 ETF 追蹤共享同一套版面、卡片與詳情頁。
+   - 整合「持有中」與「觀察清單」（股數設為 0 即為純觀察），不再分拆兩套系統。
+4. **🩺 更詳盡的投資參考與 ETF 完整成分股**
+   - **存股健康診斷評分（0–100 分）**：綜合股利品質（連續配息年數、配息穩定度、盈餘配發率）、殖利率法三段價格帶（便宜 6% / 合理 5% / 昂貴 4%）、月營收 YoY、TDCC 千張大戶持股比例與年化波動度，自動列出白話加減分理由。
+   - **自適應暴跌與下跌爆量防護**：結合個股近 60 日波動率與產業分級地板，僅在異常重挫或「下跌爆量」時觸發紅色警示。
+   - **年度股利試算 + 二代健保補充保費（2.11%）+ 12 個月現金流月曆 + 目標月領與複利模擬**。
+   - **ETF 完整 30～60 檔成分股與穿透分析**：突破舊版僅前 10 大成分股限制，新增**我的組合穿透持股（Look-through Exposure）**、**ETF 兩兩重疊度矩陣**、機構共識股、隱藏強勢股、權重熱力圖與共識動能三因子評分。
+5. **✉️ 盤後 Email 自動摘要推播**
+   - 每日盤後由 GitHub Actions 透過 Gmail SMTP 自動寄發異常波動警示、進入便宜區高分股與近期除權息預告提醒。
 
 ---
 
 ## 📁 專案結構
 
-```
+```text
 Savestock/
-├── frontend/      # Flutter 跨平台前端（screens / services / models / widgets）
-├── backend/       # FastAPI 後端
-│   ├── core/      # ★ 框架無關共用計算層（股利計算 + ETF 分析，FastAPI/Django 共用）
-│   └── routers/   # stocks / users / portfolio / etf
-├── web_django/    # Django 報表服務 + ETF Dashboard/分析頁 + Admin
-├── etl/           # 盤後資料管線（股價、股利、ETF 成分股/跨境收盤價）
-├── database/      # SQLite / PostgreSQL schema
-├── cloudbuild.yaml       # Django 報表服務建置設定
-└── cloudbuild-api.yaml   # FastAPI 後端建置設定（repo root context，納入 etl/）
+├── web/                     # React 19 + TypeScript + Vite PWA 前端
+│   ├── src/
+│   │   ├── pages/           # 總覽 / 我的持股 / 探索存股 / ETF 追蹤 / 證券詳情 / 設定同步
+│   │   ├── components/      # 共用證券卡片、SVG 價格帶折線圖、月度現金流圖表
+│   │   ├── store.ts         # IndexedDB 離線儲存與 Cloudflare D1 跨裝置同步引擎
+│   │   └── calc.ts          # 股利試算、二代健保補充保費、穿透持股與複利模擬
+├── pipeline/                # Python 全市場靜態資料管線
+│   ├── sources/             # TWSE / TPEx / TDCC / MoneyDJ / FinMind 官方與公開資料抓取器
+│   ├── core/                # 股利口徑、健康評分、自適應警示、ETF 四大分析純函式層
+│   ├── build/               # 靜態 JSON 建置器 (run_pipeline.py)
+│   ├── notify/              # Gmail SMTP 個人化盤後摘要與週報寄送 (send_digest.py)
+│   └── tests/               # 22 項核心單元測試
+├── worker/                  # Cloudflare Worker + D1 跨裝置同步與 QR 配對服務
+└── docs/                    # 系統文件
+    ├── DATA_SOURCES.md      # P0 全市場公開資料來源實測報告
+    ├── DATA_CONTRACT.md     # 靜態 JSON 規格書
+    └── OPERATIONS.md        # Cloudflare D1 / Gmail 啟用與維運手冊
 ```
 
----
-
-## 🚀 本地開發
-
-```powershell
-# 後端 API
-cd backend; uvicorn main:app --port 8000
-
-# 前端（CORS 已允許 localhost）
-cd frontend; flutter run -d chrome
-
-# 後端測試
-python -m pytest backend/tests/ -q
-```
-
----
-
-## 📚 延伸文件
-
-- **[PORTFOLIO.md](PORTFOLIO.md)** — 完整作品集說明書（技術選型理由、架構決策、解決的問題）
-- **[APP.md](APP.md)** — 詳細架構與 API 文件
-- **[etf_tracker.md](etf_tracker.md)** — ETF 追蹤模組規格書（資料範疇、四大分析演算法）
-
----
-
-<p align="center"><sub>本專案為個人作品集用途。</sub></p>
+> 舊版（Flutter + FastAPI + Django）已完整封存於 Git tag [`v1-legacy`](https://github.com/hank92312/Savestock/tree/v1-legacy)。
