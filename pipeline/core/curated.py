@@ -96,3 +96,4 @@ CURATED_ETFS: list[dict] = [
 ]
 
 CURATED_ETF_MAP: dict[str, dict] = {e["code"]: e for e in CURATED_ETFS}
+

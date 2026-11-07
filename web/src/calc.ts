@@ -243,3 +243,4 @@ export function simulateCompoundGrowth(
   }
   return timeline;
 }
+

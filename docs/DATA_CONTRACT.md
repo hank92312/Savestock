@@ -233,3 +233,4 @@
 > - `navHistory`：近 30 日 `[{ "date", "nav", "price", "discountPct" }]`
 > - `holdings`：完整成分股清單 `[{ "code", "name", "weight", "shares", "changeType", "weightDiff" }]`
 > - `completeness`：`"full"`（完整持股）或 `"top10"`（前十大）
+

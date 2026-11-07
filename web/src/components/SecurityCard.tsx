@@ -258,3 +258,4 @@ export const HoldingModal: React.FC<{
     </div>
   );
 };
+

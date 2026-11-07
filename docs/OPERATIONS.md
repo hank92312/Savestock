@@ -65,3 +65,4 @@ npx wrangler deploy
 舊版程式碼已封存於 Git tag `v1-legacy`（隨時可透過 `git checkout v1-legacy` 查閱）。
 - **GCP (`savestock-app`)**：可至 Google Cloud Console → Project Settings → **Shut down (刪除專案)**，徹底清除 Cloud Run、Artifact Registry、Cloud Scheduler 與 Secret Manager。
 - **Netlify (`savestock.netlify.app`)**：已由 GitHub Pages (`https://hank92312.github.io/Savestock/`) 完整取代，可直接於 Netlify 後台刪除站台。
+

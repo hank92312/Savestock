@@ -79,3 +79,4 @@ def test_etf_lookthrough_and_overlap():
     assert look[0]["exposed_value"] == 14000
     ov = calc_etf_pairwise_overlap(etf_map)
     assert ov["matrix"][0][1] == 9.0  # min(5,8) + min(4,10) = 5 + 4 = 9.0%
+

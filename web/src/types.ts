@@ -259,3 +259,4 @@ export interface UserSyncDoc {
   settings: UserSettings;
   updatedAt: number;
 }
+

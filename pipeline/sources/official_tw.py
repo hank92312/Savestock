@@ -672,3 +672,4 @@ def fetch_finmind_stock_history(code: str, start_date: str = "2020-01-01") -> tu
 
     time.sleep(0.15)
     return prices, dividends, valuations
+

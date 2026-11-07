@@ -48,3 +48,4 @@ CREATE TABLE IF NOT EXISTS user_docs (
 -- 預設建立管理員邀請碼 HANK-ADMIN（供你與少數朋友首次啟用）
 INSERT OR IGNORE INTO invites (code, created_by, used_by, expires_at)
 VALUES ('HANK-ADMIN', 0, NULL, 4102444800000);
+

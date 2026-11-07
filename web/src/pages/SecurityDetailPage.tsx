@@ -409,3 +409,4 @@ export const SecurityDetailPage: React.FC<{
     </div>
   );
 };
+

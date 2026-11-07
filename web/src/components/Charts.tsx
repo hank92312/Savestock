@@ -171,3 +171,4 @@ export const MonthlyBarChart: React.FC<{
     </div>
   );
 };
+

@@ -476,3 +476,4 @@ def calc_etf_pairwise_overlap(etf_holdings_map: dict[str, list[dict]]) -> dict:
         matrix.append(row)
 
     return {"etfs": etf_ids, "matrix": matrix}
+
